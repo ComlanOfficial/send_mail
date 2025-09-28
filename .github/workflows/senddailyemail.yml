@@ -14,15 +14,6 @@ jobs:
     - name: 检查代码
       uses: actions/checkout@v4
       
-    - name: 测试邮件配置（先不调用Dify）
-      id: test-email
-      run: |
-        echo "测试邮件配置..."
-        echo "test_content<<EOF" >> $GITHUB_OUTPUT
-        echo "这是一封测试邮件，用于验证邮件配置是否正确。" >> $GITHUB_OUTPUT
-        echo "时间: $(date)" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-      
     - name: 调用Dify Workflow获取数据
       id: dify-data
       run: |
@@ -88,36 +79,49 @@ jobs:
         echo "$dify_response"
         echo "=== 原始数据结束 ==="
         
-        # 尝试检测内容类型
-        if echo "$dify_response" | grep -q "<!DOCTYPE html\|<html"; then
-          echo "检测到HTML格式内容"
-          content_type="html"
-        elif echo "$dify_response" | grep -q "^{.*}$"; then
-          echo "检测到JSON格式内容"
-          content_type="json"
+        # 检查是否是JSON格式
+        if echo "$dify_response" | jq empty 2>/dev/null; then
+          echo "检测到JSON格式，尝试提取内容"
+          
+          # 尝试提取email_html字段
+          email_html=$(echo "$dify_response" | jq -r '.data.outputs.email_html // .outputs.email_html // .email_html // empty' 2>/dev/null)
+          
+          if [ -n "$email_html" ] && [ "$email_html" != "null" ]; then
+            echo "成功提取HTML内容"
+            email_content="$email_html"
+            content_type="html"
+          else
+            echo "未找到email_html字段，使用原始JSON"
+            email_content="$dify_response"
+            content_type="json"
+          fi
         else
-          echo "检测到纯文本格式内容"
+          echo "检测到非JSON格式，直接使用原始内容"
+          email_content="$dify_response"
           content_type="text"
         fi
         
-        # 直接使用原始响应，不做任何修改
+        echo "最终邮件内容类型: $content_type"
+        echo "内容长度: $(echo "$email_content" | wc -c) 字符"
+        
+        # 输出处理后的内容
         echo "email_content<<EOF" >> $GITHUB_OUTPUT
-        echo "$dify_response" >> $GITHUB_OUTPUT
+        echo "$email_content" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
         
         echo "content_type<<EOF" >> $GITHUB_OUTPUT
         echo "$content_type" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
         
-    - name: 发送测试邮件（验证邮件配置）
+    - name: 发送邮件（使用Dify数据）
       uses: dawidd6/action-send-mail@v3
       with:
         server_address: mail.comlan.com
         server_port: 25
         username: ${{ secrets.MAIL_USERNAME }}
         password: ${{ secrets.MAIL_PASSWORD }}
-        subject: '测试邮件 - 验证配置 - $(date +"%Y-%m-%d %H:%M")'
-        body: ${{ steps.test-email.outputs.test_content }}
+        subject: '每日报告 - ${{ github.workflow }} - $(date +"%Y-%m-%d %H:%M")'
+        body: ${{ steps.process-data.outputs.email_content }}
         to: wang.tianyang@comlan.com
         from: ai.public@comlan.com
-        content_type: 'text/plain'
+        content_type: 'text/html'
