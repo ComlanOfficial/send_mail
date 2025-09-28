@@ -1,6 +1,6 @@
 # .github/workflows/send-daily-email.yml
 
-name: Send Daily Email from Dify
+name: Send Daily Email from Dify (Simplified Version)
 
 on:
   schedule:
@@ -48,7 +48,7 @@ jobs:
         with:
           # 邮件服务器配置 - 已修正为推荐的加密端口和设置
           server_address: mail.comlan.com
-          server_port: 25
+          server_port: 465
           secure: true
           
           # 认证信息
