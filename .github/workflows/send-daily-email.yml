@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Python Version)
+name: Send Daily Email from Dify (Curl Version)
 
 on:
   schedule:
@@ -43,67 +43,28 @@ jobs:
           echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Send email using Python
+      - name: Send email using curl
         run: |
-          echo "使用Python发送邮件..."
+          echo "使用curl发送邮件..."
           
-          # 创建Python脚本
-          cat > send_email.py << 'EOF'
-          import smtplib
-          import ssl
-          from email.mime.text import MIMEText
-          from email.mime.multipart import MIMEMultipart
-          import os
-          import sys
+          # 创建邮件文件
+          cat > email.txt << EOF
+          From: ${{ secrets.MAIL_USERNAME }}
+          To: wang.tantyang@comlan.com
+          Subject: 来自 Dify 的每日报告
+          Content-Type: text/html; charset=UTF-8
           
-          def send_email():
-              try:
-                  # 邮件配置
-                  smtp_server = "mail.comlan.com"
-                  smtp_port = 25
-                  username = os.environ['MAIL_USERNAME']
-                  password = os.environ['MAIL_PASSWORD']
-                  from_email = os.environ['MAIL_USERNAME']
-                  to_email = "wang.tantyang@comlan.com"
-                  
-                  # 创建邮件
-                  msg = MIMEMultipart('alternative')
-                  msg['From'] = from_email
-                  msg['To'] = to_email
-                  msg['Subject'] = "来自 Dify 的每日报告"
-                  
-                  # 添加HTML内容
-                  html_content = os.environ['EMAIL_HTML']
-                  html_part = MIMEText(html_content, 'html', 'utf-8')
-                  msg.attach(html_part)
-                  
-                  # 发送邮件
-                  print(f"连接到 {smtp_server}:{smtp_port}")
-                  server = smtplib.SMTP(smtp_server, smtp_port)
-                  server.set_debuglevel(1)  # 启用调试
-                  
-                  print("开始认证...")
-                  server.login(username, password)
-                  
-                  print("发送邮件...")
-                  server.sendmail(from_email, to_email, msg.as_string())
-                  server.quit()
-                  
-                  print("邮件发送成功！")
-                  return True
-                  
-              except Exception as e:
-                  print(f"发送失败: {e}")
-                  return False
-          
-          if __name__ == "__main__":
-              success = send_email()
-              sys.exit(0 if success else 1)
+          ${{ steps.dify_content.outputs.email_html }}
           EOF
           
-          # 运行Python脚本
-          timeout 60 python3 send_email.py
-        env:
-          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
-          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
-          EMAIL_HTML: ${{ steps.dify_content.outputs.email_html }}
+          echo "邮件内容已创建，开始发送..."
+          
+          # 使用curl发送邮件
+          timeout 60 curl -v \
+            --url smtp://mail.comlan.com:25 \
+            --mail-from "${{ secrets.MAIL_USERNAME }}" \
+            --mail-rcpt "wang.tantyang@comlan.com" \
+            --upload-file email.txt \
+            --user "${{ secrets.MAIL_USERNAME }}:${{ secrets.MAIL_PASSWORD }}" \
+            --connect-timeout 30 \
+            --max-time 60
