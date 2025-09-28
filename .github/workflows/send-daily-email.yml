@@ -1,21 +1,60 @@
 # .github/workflows/send-daily-email.yml
 
-name: Send Daily Email
+name: Send Daily Dify Report Email
 
 on:
   schedule:
     # 每天的 UTC 时间上午 8 点运行
+    # 注意：北京时间是下午 4 点
     - cron: '0 8 * * *'
   
   # 允许手动触发测试
   workflow_dispatch:
 
 jobs:
-  send_email_job:
+  build_and_send_email_job:
     runs-on: ubuntu-latest
-    name: Send a daily report email
+    name: Build report from Dify and send email
 
     steps:
+      # 步骤 1: 安装 jq 用于解析 JSON
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      # 步骤 2: 调用 Dify Workflow API 获取邮件内容
+      - name: Call Dify Workflow API
+        id: call_dify # 给这个步骤一个 ID，方便后续引用它的输出
+        run: |
+          # 发送 POST 请求到 Dify API
+          # 注意：请将下面的 URL 替换为你自己的 Dify Workflow API 端点
+          API_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+                  "inputs": {
+                    "github_repo": "${{ github.repository }}"
+                  },
+                  "response_mode": "blocking",
+                  "user": "github-actions"
+                }' \
+            "https://dify.comlan.com/v1/workflows/run") # <-- 替换成你的 URL  
+
+          # 检查 API 是否成功返回
+          if [ -z "$API_RESPONSE" ]; then
+            echo "Error: Dify API returned an empty response."
+            exit 1
+          fi
+
+          # 使用 jq 解析 JSON 并将结果设置为此步骤的输出变量
+          # 假设 Dify 返回的 JSON 格式为 {"email_subject": "...", "email_body_html": "..."}
+          EMAIL_SUBJECT=$(echo $API_RESPONSE | jq -r '.data.email_subject // "Dify 每日报告"')
+          EMAIL_BODY=$(echo $API_RESPONSE | jq -r '.data.email_body_html // "无法从 Dify 获取报告内容。"')
+          
+          # 将解析出的内容设置为 GitHub Actions 的输出变量
+          echo "email_subject=$EMAIL_SUBJECT" >> $GITHUB_OUTPUT
+          echo "email_body=$EMAIL_BODY" >> $GITHUB_OUTPUT  
+
+      # 步骤 3: 使用上一步的结果发送邮件
       - name: Send email action
         uses: dawidd6/action-send-mail@v3
         with:
@@ -28,18 +67,10 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件内容
-          subject: '每日报告 - ${{ github.workflow }}'
+          # 邮件内容 - 从上一步 (call_dify) 的输出中获取
+          subject: ${{ steps.call_dify.outputs.email_subject }}
+          html_body: ${{ steps.call_dify.outputs.email_body }} # 使用 html_body 以便发送 HTML 格式
           
-          body: |
-            你好,
-
-            这是一封来自 GitHub Actions 的自动邮件。
-            执行时间: ${{ github.run_number }}
-            仓库: ${{ github.repository }}
-
-            祝好!
-
           # 收件人
           to: wang.tianyang@comlan.com
           
