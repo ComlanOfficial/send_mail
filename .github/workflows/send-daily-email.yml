@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Final Version)
+name: Send Daily Email from Dify (Auth Debug Version)
 
 on:
   schedule:
@@ -26,25 +26,11 @@ jobs:
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
           
-          echo "=== API响应 ==="
-          echo "$API_RESPONSE"
-          echo "=== 响应结束 ==="
-          
           if [ -z "$API_RESPONSE" ]; then
             echo "::error::Dify API返回空响应"
             exit 1
           fi
           
-          # 检查JSON结构
-          echo "=== 检查JSON结构 ==="
-          echo "data字段:"
-          echo "$API_RESPONSE" | jq '.data'
-          echo "outputs字段:"
-          echo "$API_RESPONSE" | jq '.data.outputs'
-          echo "email_html字段:"
-          echo "$API_RESPONSE" | jq '.data.outputs.email_html'
-          
-          # 尝试不同的路径
           EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // empty')
           
           if [ -z "$EMAIL_HTML" ]; then
@@ -52,14 +38,59 @@ jobs:
             EMAIL_HTML="<html><body><h1>每日AI新闻摘要</h1><p>抱歉，今日内容获取失败，请稍后重试。</p></body></html>"
           fi
           
-          echo "最终email_html长度: ${#EMAIL_HTML}"
-          echo "email_html前200字符: ${EMAIL_HTML:0:200}..."
-          
           echo "email_html<<EOF" >> $GITHUB_OUTPUT
           echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Send email
+      - name: Test Email Authentication (Port 25)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: mail.comlan.com
+          server_port: 25
+          secure: false
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "测试邮件 - 端口25"
+          html_body: "<html><body><h1>测试邮件</h1><p>这是端口25的测试邮件</p></body></html>"
+          to: wang.tantyang@comlan.com
+          from: ${{ secrets.MAIL_USERNAME }}
+          nodemailerlog: true
+          nodemailerdebug: true
+
+      - name: Test Email Authentication (Port 587)
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: mail.comlan.com
+          server_port: 587
+          secure: false
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "测试邮件 - 端口587"
+          html_body: "<html><body><h1>测试邮件</h1><p>这是端口587的测试邮件</p></body></html>"
+          to: wang.tantyang@comlan.com
+          from: ${{ secrets.MAIL_USERNAME }}
+          nodemailerlog: true
+          nodemailerdebug: true
+
+      - name: Test Email Authentication (Port 465)
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: mail.comlan.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "测试邮件 - 端口465"
+          html_body: "<html><body><h1>测试邮件</h1><p>这是端口465的测试邮件</p></body></html>"
+          to: wang.tantyang@comlan.com
+          from: ${{ secrets.MAIL_USERNAME }}
+          nodemailerlog: true
+          nodemailerdebug: true
+
+      - name: Send Final Email
+        if: always()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: mail.comlan.com
@@ -71,3 +102,5 @@ jobs:
           html_body: ${{ steps.dify_content.outputs.email_html }}
           to: wang.tantyang@comlan.com
           from: ${{ secrets.MAIL_USERNAME }}
+          nodemailerlog: true
+          nodemailerdebug: true
