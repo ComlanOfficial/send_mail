@@ -16,13 +16,10 @@ jobs:
     name: Fetch from Dify and Send Email
 
     steps:
-      # 步骤 1: 调用 Dify Workflow API 获取邮件的 HTML 内容和主题
-      # 我们给这个步骤一个 ID 'dify_content'，以便后续步骤可以引用它的输出
-      - name: Fetch email content from Dify
+      # 步骤 1: 直接调用 Dify Workflow API 获取原始的 HTML 响应
+      - name: Fetch raw email body from Dify
         id: dify_content
         run: |
-          # 向你的 Dify Workflow API 端点发送 POST 请求
-          # 请务必将下面的 URL 替换为你自己的 Dify Workflow API 地址
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -31,7 +28,7 @@ jobs:
                   "response_mode": "blocking",
                   "user": "github-action-runner"
                 }' \
-            "https://dify.comlan.com/v1/workflows/run") # <--- 替换成你的 Dify API URL
+            "https://dify.comlan.com/v1/workflows/run") # <--- 已为你替换成你的 Dify API URL
 
           # 检查 API 响应是否为空
           if [ -z "$API_RESPONSE" ]; then
@@ -39,23 +36,12 @@ jobs:
             exit 1
           fi
 
-          # 使用 jq (一个 JSON 处理器) 来解析返回的 JSON 数据
-          # 从响应中提取 'subject' 和 'html_content'
-          # `// "默认值"` 语法可以在 API 未返回对应字段时提供一个备用值，防止工作流失败
-          EMAIL_SUBJECT=$(echo $API_RESPONSE | jq -r '.data.subject // "Dify 每日报告"')
-          EMAIL_HTML=$(echo $API_RESPONSE | jq -r '.data.html_content // "无法从 Dify 获取邮件内容。"')
-
-          # 这是 GitHub Actions 在步骤间传递多行数据的标准方法
-          # 我们将解析出的内容写入一个文件中，然后设置 GITHUB_OUTPUT
-          echo "email_subject<<EOF" >> $GITHUB_OUTPUT
-          echo "$EMAIL_SUBJECT" >> $GITHUB_OUTPUT
+          # 将从 Dify 获取到的全部原始响应内容设置为输出变量
+          echo "email_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$API_RESPONSE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          echo "email_html<<EOF" >> $GITHUB_OUTPUT
-          echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      # 步骤 2: 使用上一步从 Dify 获取的内容发送邮件
+      # 步骤 2: 使用上一步从 Dify 获取的全部内容作为邮件正文来发送邮件
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
@@ -68,9 +54,9 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件内容 - 完全来自于上一步 (dify_content) 的输出
-          subject: ${{ steps.dify_content.outputs.email_subject }}
-          html_body: ${{ steps.dify_content.outputs.email_html }}
+          # 邮件内容
+          subject: '来自 Dify 的每日报告'
+          html_body: ${{ steps.dify_content.outputs.email_body }}
           
           # 收件人
           to: wang.tianyang@comlan.com
