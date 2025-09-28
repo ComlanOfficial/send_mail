@@ -58,8 +58,8 @@ jobs:
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: mail.comlan.com
-          server_port: 465
-          secure: true
+          server_port: 25
+          secure: false
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "来自 Dify 的每日报告"
