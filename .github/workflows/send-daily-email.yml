@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Debug Version)
+name: Send Daily Email from Dify (Port 25 Version)
 
 on:
   schedule:
@@ -59,19 +59,17 @@ jobs:
           echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Test Email Connection
+      - name: Test Port 25 Connection
         run: |
-          echo "测试邮件服务器连接..."
-          telnet mail.comlan.com 587 || echo "587端口连接失败"
-          telnet mail.comlan.com 465 || echo "465端口连接失败"
-          telnet mail.comlan.com 25 || echo "25端口连接失败"
+          echo "测试端口25连接..."
+          timeout 10 telnet mail.comlan.com 25 || echo "端口25连接失败"
 
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: mail.comlan.com
-          server_port: 587
-          secure: false
+          server_port: 25
+          secure: false  # 端口25通常不需要SSL
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "来自 Dify 的每日报告"
