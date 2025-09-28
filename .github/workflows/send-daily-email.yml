@@ -1,24 +1,15 @@
-name: Send Daily Email from Dify (Minimal Test)
-
-on:
-  schedule:
-    - cron: '0 8 * * *'
-  workflow_dispatch:
-
-jobs:
-  send_email_job:
-    runs-on: ubuntu-latest
-    name: Send a daily report email
-
-    steps:
-      - name: Send simple test email
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: mail.comlan.com
-          server_port: 25
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "测试邮件"
-          body: "这是一封测试邮件，用于验证邮件服务器配置。"
-          to: wang.tianyang@comlan.com
-          from: ai.public@comlan.com
+- name: Send email action
+  uses: dawidd6/action-send-mail@v3
+  with:
+    server_address: mail.comlan.com
+    server_port: 25
+    username: ${{ secrets.MAIL_USERNAME }}
+    password: ${{ secrets.MAIL_PASSWORD }}
+    subject: '每日报告 - ${{ github.workflow }}'
+    body: |
+      你好,
+      这是一封来自 GitHub Actions 的自动邮件。
+      今天是 {{ date }}.
+      祝好!
+    to: wang.tianyang@comlan.com
+    from: ai.public@comlan.com
