@@ -16,8 +16,8 @@ jobs:
     name: Fetch from Dify and Send Email
 
     steps:
-      # 步骤 1: 直接调用 Dify Workflow API 获取原始的 HTML 响应
-      - name: Fetch raw email body from Dify
+      # 步骤 1: 调用 Dify API 并使用 jq 解析返回的 JSON
+      - name: Fetch and Parse Email Content from Dify
         id: dify_content
         run: |
           API_RESPONSE=$(curl -s -X POST \
@@ -28,20 +28,29 @@ jobs:
                   "response_mode": "blocking",
                   "user": "github-action-runner"
                 }' \
-            "https://dify.comlan.com/v1/workflows/run") # <--- 已为你替换成你的 Dify API URL
+            "https://dify.comlan.com/v1/workflows/run")
 
           # 检查 API 响应是否为空
           if [ -z "$API_RESPONSE" ]; then
             echo "::error::Dify API returned an empty response."
             exit 1
           fi
-
-          # 将从 Dify 获取到的全部原始响应内容设置为输出变量
-          echo "email_body<<EOF" >> $GITHUB_OUTPUT
-          echo "$API_RESPONSE" >> $GITHUB_OUTPUT
+          
+          # 使用 jq 解析 JSON 并将结果设置为此步骤的输出变量
+          # 根据你提供的数据，Dify 返回的业务数据不在 'data' 字段下，而是直接在顶层
+          EMAIL_SUBJECT=$(echo "$API_RESPONSE" | jq -r '.subject // "Dify 每日报告"')
+          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.email_html // "无法从 Dify 获取邮件内容。"')
+          
+          # 将解析出的内容设置为 GitHub Actions 的输出变量
+          echo "email_subject<<EOF" >> $GITHUB_OUTPUT
+          echo "$EMAIL_SUBJECT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 步骤 2: 使用上一步从 Dify 获取的全部内容作为邮件正文来发送邮件
+          echo "email_html<<EOF" >> $GITHUB_OUTPUT
+          echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 步骤 2: 使用上一步解析出的内容发送邮件
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
@@ -54,9 +63,9 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件内容
-          subject: '来自 Dify 的每日报告'
-          html_body: ${{ steps.dify_content.outputs.email_body }}
+          # 邮件内容 - 完全来自于上一步解析的结果
+          subject: ${{ steps.dify_content.outputs.email_subject }}
+          html_body: ${{ steps.dify_content.outputs.email_html }}
           
           # 收件人
           to: wang.tianyang@comlan.com
