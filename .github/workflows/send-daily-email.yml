@@ -20,6 +20,7 @@ jobs:
       - name: Fetch and Parse Email Content from Dify
         id: dify_content
         run: |
+          # 调用 Dify API 并将返回结果存入变量
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -29,10 +30,6 @@ jobs:
                   "user": "github-action-runner"
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
-          # ---------> 在这里加上下面的调试代码 <---------
-          echo "Dify Raw Response:"
-          echo "$API_RESPONSE"
-          # -----------------> 调试代码结束 <-----------------
 
           # 检查 API 响应是否为空
           if [ -z "$API_RESPONSE" ]; then
@@ -40,8 +37,7 @@ jobs:
             exit 1
           fi
           
-          # 使用 jq 解析 JSON 并将结果设置为此步骤的输出变量
-          # 你的数据里没有 subject，所以我们只解析 email_html
+          # 【关键】使用 jq 解析 JSON，并提取 'email_html' 字段
           EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.email_html // "无法从 Dify 获取邮件内容。"')
           
           # 将解析出的内容设置为 GitHub Actions 的输出变量
@@ -53,17 +49,17 @@ jobs:
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
-          # 邮件服务器配置 - 已修正为推荐的加密端口和设置
+          # 邮件服务器配置 - 已修正为推荐的加密端口
           server_address: mail.comlan.com
-          server_port: 25
-          secure: false
+          server_port: 465
+          secure: true
           
           # 认证信息
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
           # 邮件内容
-          subject: "来自 Dify 的每日报告" # 主题是固定的，因为返回数据里没有主题
+          subject: "来自 Dify 的每日报告" # 主题是固定的
           html_body: ${{ steps.dify_content.outputs.email_html }}
           
           # 收件人
