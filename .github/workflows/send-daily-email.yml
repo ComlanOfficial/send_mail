@@ -29,6 +29,10 @@ jobs:
                   "user": "github-action-runner"
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
+          # ---------> 在这里加上下面的调试代码 <---------
+          echo "Dify Raw Response:"
+          echo "$API_RESPONSE"
+          # -----------------> 调试代码结束 <-----------------
 
           # 检查 API 响应是否为空
           if [ -z "$API_RESPONSE" ]; then
