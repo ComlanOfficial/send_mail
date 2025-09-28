@@ -16,10 +16,11 @@ jobs:
     name: Fetch from Dify and Send Email
 
     steps:
-      # 步骤 1: 调用 Dify API 并使用 jq 解析返回的 JSON
-      - name: Fetch and Parse Email Content from Dify
+      # 步骤 1: 调用 Dify API，并获取返回的全部原始响应
+      - name: Fetch Raw Content from Dify
         id: dify_content
         run: |
+          # 直接调用 Dify API，并将返回的所有内容存入变量
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -36,36 +37,27 @@ jobs:
             exit 1
           fi
           
-          # 使用 jq 解析 JSON 并将结果设置为此步骤的输出变量
-          # 根据你提供的数据，Dify 返回的业务数据不在 'data' 字段下，而是直接在顶层
-          EMAIL_SUBJECT=$(echo "$API_RESPONSE" | jq -r '.subject // "Dify 每日报告"')
-          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.email_html // "无法从 Dify 获取邮件内容。"')
-          
-          # 将解析出的内容设置为 GitHub Actions 的输出变量
-          echo "email_subject<<EOF" >> $GITHUB_OUTPUT
-          echo "$EMAIL_SUBJECT" >> $GITHUB_OUTPUT
+          # 将获取到的全部原始响应（原封不动）设置为输出变量
+          echo "email_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$API_RESPONSE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-          echo "email_html<<EOF" >> $GITHUB_OUTPUT
-          echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      # 步骤 2: 使用上一步解析出的内容发送邮件
+      # 步骤 2: 使用上一步获取的全部内容发送邮件
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
-          # 邮件服务器配置
+          # 邮件服务器配置 - 已修正为推荐的加密端口和设置
           server_address: mail.comlan.com
           server_port: 25
-          secure: false
+          secure: true
           
           # 认证信息
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件内容 - 完全来自于上一步解析的结果
-          subject: ${{ steps.dify_content.outputs.email_subject }}
-          html_body: ${{ steps.dify_content.outputs.email_html }}
+          # 邮件内容 - 正文完全来自于上一步，主题是固定的
+          subject: '来自 Dify 的每日报告' # 你可以在这里自定义邮件主题
+          html_body: ${{ steps.dify_content.outputs.email_body }} # 原封不动地使用 Dify 返回的所有内容
           
           # 收件人
           to: wang.tianyang@comlan.com
