@@ -69,7 +69,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
         fi
         
-    - name: 处理Dify返回数据（保持原始格式）
+    - name: 处理Dify返回数据（使用Python安全处理）
       id: process-data
       run: |
         # 获取Dify返回的原始数据
@@ -79,39 +79,60 @@ jobs:
         echo "$dify_response"
         echo "=== 原始数据结束 ==="
         
-        # 检查是否是JSON格式
-        if echo "$dify_response" | jq empty 2>/dev/null; then
-          echo "检测到JSON格式，尝试提取内容"
-          
-          # 尝试提取email_html字段
-          email_html=$(echo "$dify_response" | jq -r '.data.outputs.email_html // .outputs.email_html // .email_html // empty' 2>/dev/null)
-          
-          if [ -n "$email_html" ] && [ "$email_html" != "null" ]; then
-            echo "成功提取HTML内容"
-            email_content="$email_html"
-            content_type="html"
-          else
-            echo "未找到email_html字段，使用原始JSON"
-            email_content="$dify_response"
-            content_type="json"
-          fi
-        else
-          echo "检测到非JSON格式，直接使用原始内容"
-          email_content="$dify_response"
-          content_type="text"
-        fi
-        
-        echo "最终邮件内容类型: $content_type"
-        echo "内容长度: $(echo "$email_content" | wc -c) 字符"
-        
-        # 输出处理后的内容
-        echo "email_content<<EOF" >> $GITHUB_OUTPUT
-        echo "$email_content" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-        
-        echo "content_type<<EOF" >> $GITHUB_OUTPUT
-        echo "$content_type" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        # 使用Python安全处理JSON数据
+        DIFY_RESPONSE="$dify_response" python3 << 'EOF'
+import json
+import sys
+import os
+
+# 从环境变量获取响应数据
+dify_response = os.environ.get('DIFY_RESPONSE', '')
+print(f"开始处理数据，长度: {len(dify_response)} 字符")
+
+try:
+    # 尝试解析JSON
+    data = json.loads(dify_response)
+    print("成功解析JSON数据")
+    
+    # 尝试提取email_html字段
+    email_html = None
+    if 'data' in data and 'outputs' in data['data'] and 'email_html' in data['data']['outputs']:
+        email_html = data['data']['outputs']['email_html']
+        print("从 data.outputs.email_html 提取内容")
+    elif 'outputs' in data and 'email_html' in data['outputs']:
+        email_html = data['outputs']['email_html']
+        print("从 outputs.email_html 提取内容")
+    elif 'email_html' in data:
+        email_html = data['email_html']
+        print("从 email_html 提取内容")
+    
+    if email_html and email_html != "null":
+        print("成功提取HTML内容")
+        content_type = "html"
+        email_content = email_html
+    else:
+        print("未找到email_html字段，使用原始JSON")
+        content_type = "json"
+        email_content = dify_response
+except json.JSONDecodeError:
+    print("非JSON格式，直接使用原始内容")
+    content_type = "text"
+    email_content = dify_response
+except Exception as e:
+    print(f"处理过程中出错: {e}")
+    content_type = "text"
+    email_content = dify_response
+
+print(f"最终邮件内容类型: {content_type}")
+print(f"内容长度: {len(email_content)} 字符")
+
+# 输出到GitHub Actions
+with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+    f.write(f"email_content<<EOF\n{email_content}\nEOF\n")
+    f.write(f"content_type<<EOF\n{content_type}\nEOF\n")
+
+print("数据处理完成")
+EOF
         
     - name: 发送邮件（使用Dify数据）
       uses: dawidd6/action-send-mail@v3
