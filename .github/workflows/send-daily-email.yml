@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Auth Debug Version)
+name: Send Daily Email from Dify (Timeout Fix)
 
 on:
   schedule:
@@ -9,6 +9,7 @@ jobs:
   send_email_job:
     runs-on: ubuntu-latest
     name: Fetch from Dify and Send Email
+    timeout-minutes: 10  # 整个任务10分钟超时
 
     steps:
       - name: Fetch and Parse Email Content from Dify
@@ -42,65 +43,49 @@ jobs:
           echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Test Email Authentication (Port 25)
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: mail.comlan.com
-          server_port: 25
-          secure: false
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "测试邮件 - 端口25"
-          html_body: "<html><body><h1>测试邮件</h1><p>这是端口25的测试邮件</p></body></html>"
-          to: wang.tantyang@comlan.com
-          from: ${{ secrets.MAIL_USERNAME }}
-          nodemailerlog: true
-          nodemailerdebug: true
+      - name: Test Network Connection
+        run: |
+          echo "测试网络连接..."
+          ping -c 3 mail.comlan.com || echo "ping失败"
+          telnet mail.comlan.com 25 || echo "端口25连接失败"
 
-      - name: Test Email Authentication (Port 587)
-        if: failure()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: mail.comlan.com
-          server_port: 587
-          secure: false
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "测试邮件 - 端口587"
-          html_body: "<html><body><h1>测试邮件</h1><p>这是端口587的测试邮件</p></body></html>"
-          to: wang.tantyang@comlan.com
-          from: ${{ secrets.MAIL_USERNAME }}
-          nodemailerlog: true
-          nodemailerdebug: true
-
-      - name: Test Email Authentication (Port 465)
-        if: failure()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: mail.comlan.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "测试邮件 - 端口465"
-          html_body: "<html><body><h1>测试邮件</h1><p>这是端口465的测试邮件</p></body></html>"
-          to: wang.tantyang@comlan.com
-          from: ${{ secrets.MAIL_USERNAME }}
-          nodemailerlog: true
-          nodemailerdebug: true
-
-      - name: Send Final Email
-        if: always()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: mail.comlan.com
-          server_port: 25
-          secure: false
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "来自 Dify 的每日报告"
-          html_body: ${{ steps.dify_content.outputs.email_html }}
-          to: wang.tantyang@comlan.com
-          from: ${{ secrets.MAIL_USERNAME }}
-          nodemailerlog: true
-          nodemailerdebug: true
+      - name: Send email with timeout
+        run: |
+          echo "开始发送邮件..."
+          timeout 300 node -e "
+            const nodemailer = require('nodemailer');
+            
+            const transporter = nodemailer.createTransporter({
+              host: 'mail.comlan.com',
+              port: 25,
+              secure: false,
+              auth: {
+                user: process.env.MAIL_USERNAME,
+                pass: process.env.MAIL_PASSWORD
+              },
+              connectionTimeout: 30000,
+              greetingTimeout: 30000,
+              socketTimeout: 30000
+            });
+            
+            const mailOptions = {
+              from: process.env.MAIL_USERNAME,
+              to: 'wang.tantyang@comlan.com',
+              subject: '来自 Dify 的每日报告',
+              html: process.env.EMAIL_HTML
+            };
+            
+            transporter.sendMail(mailOptions, (error, info) => {
+              if (error) {
+                console.error('发送失败:', error);
+                process.exit(1);
+              } else {
+                console.log('发送成功:', info.messageId);
+                process.exit(0);
+              }
+            });
+          "
+        env:
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          EMAIL_HTML: ${{ steps.dify_content.outputs.email_html }}
