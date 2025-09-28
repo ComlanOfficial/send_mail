@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Fixed Version)
+name: Send Daily Email from Dify (Debug Version)
 
 on:
   schedule:
@@ -26,33 +26,56 @@ jobs:
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
           
-          echo "API响应:"
+          echo "=== API响应 ==="
           echo "$API_RESPONSE"
+          echo "=== 响应结束 ==="
           
           if [ -z "$API_RESPONSE" ]; then
             echo "::error::Dify API返回空响应"
             exit 1
           fi
           
-          # 修正：使用正确的JSON路径
-          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // "无法从 Dify 获取邮件内容。"')
+          # 检查JSON结构
+          echo "=== 检查JSON结构 ==="
+          echo "data字段:"
+          echo "$API_RESPONSE" | jq '.data'
+          echo "outputs字段:"
+          echo "$API_RESPONSE" | jq '.data.outputs'
+          echo "email_html字段:"
+          echo "$API_RESPONSE" | jq '.data.outputs.email_html'
           
-          echo "提取的email_html长度: ${#EMAIL_HTML}"
-          echo "email_html前100字符: ${EMAIL_HTML:0:100}..."
+          # 尝试不同的路径
+          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // empty')
+          
+          if [ -z "$EMAIL_HTML" ]; then
+            echo "::warning::使用备用内容"
+            EMAIL_HTML="<html><body><h1>每日AI新闻摘要</h1><p>抱歉，今日内容获取失败，请稍后重试。</p></body></html>"
+          fi
+          
+          echo "最终email_html长度: ${#EMAIL_HTML}"
+          echo "email_html前200字符: ${EMAIL_HTML:0:200}..."
           
           echo "email_html<<EOF" >> $GITHUB_OUTPUT
           echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Test Email Connection
+        run: |
+          echo "测试邮件服务器连接..."
+          telnet mail.comlan.com 587 || echo "587端口连接失败"
+          telnet mail.comlan.com 465 || echo "465端口连接失败"
+          telnet mail.comlan.com 25 || echo "25端口连接失败"
+
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: mail.comlan.com
-          server_port: 465
-          secure: true
+          server_port: 587
+          secure: false
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "来自 Dify 的每日报告"
           html_body: ${{ steps.dify_content.outputs.email_html }}
           to: wang.tantyang@comlan.com
           from: ${{ secrets.MAIL_USERNAME }}
+          timeout: 30000
