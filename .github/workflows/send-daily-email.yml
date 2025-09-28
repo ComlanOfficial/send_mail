@@ -1,6 +1,6 @@
 # .github/workflows/send-daily-email.yml
 
-name: Send Daily Email from Dify (Simplified Version)
+name: Send Daily Email from Dify (Universal Version)
 
 on:
   schedule:
@@ -57,7 +57,9 @@ jobs:
 
           # 邮件内容 - 正文完全来自于上一步，主题是固定的
           subject: '来自 Dify 的每日报告' # 你可以在这里自定义邮件主题
-          html_body: ${{ steps.dify_content.outputs.email_body }} # 原封不动地使用 Dify 返回的所有内容
+          
+          # html_body 参数可以同时优雅地处理 HTML 和纯文本字符串
+          html_body: ${{ steps.dify_content.outputs.email_body }} 
           
           # 收件人
           to: wang.tianyang@comlan.com
