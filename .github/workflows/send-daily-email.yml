@@ -1,61 +1,62 @@
 # .github/workflows/send-daily-email.yml
 
-name: Send Daily Dify Report Email
+name: Send Daily Email from Dify
 
 on:
   schedule:
-    # 每天的 UTC 时间上午 8 点运行
-    # 注意：北京时间是下午 4 点
+    # 每天的 UTC 时间上午 8 点运行 (北京时间下午 4 点)
     - cron: '0 8 * * *'
   
-  # 允许手动触发测试
+  # 允许在 Actions 页面手动触发此工作流，方便测试
   workflow_dispatch:
 
 jobs:
-  build_and_send_email_job:
+  send_email_job:
     runs-on: ubuntu-latest
-    name: Build report from Dify and send email
+    name: Fetch from Dify and Send Email
 
     steps:
-      # 步骤 1: 安装 jq 用于解析 JSON
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      # 步骤 2: 调用 Dify Workflow API 获取邮件内容
-      - name: Call Dify Workflow API
-        id: call_dify # 给这个步骤一个 ID，方便后续引用它的输出
+      # 步骤 1: 调用 Dify Workflow API 获取邮件的 HTML 内容和主题
+      # 我们给这个步骤一个 ID 'dify_content'，以便后续步骤可以引用它的输出
+      - name: Fetch email content from Dify
+        id: dify_content
         run: |
-          # 发送 POST 请求到 Dify API
-          # 注意：请将下面的 URL 替换为你自己的 Dify Workflow API 端点
+          # 向你的 Dify Workflow API 端点发送 POST 请求
+          # 请务必将下面的 URL 替换为你自己的 Dify Workflow API 地址
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{
-                  "inputs": {
-                    "github_repo": "${{ github.repository }}"
-                  },
+                  "inputs": {},
                   "response_mode": "blocking",
-                  "user": "github-actions"
+                  "user": "github-action-runner"
                 }' \
-            "https://dify.comlan.com/v1/workflows/run") # <-- 替换成你的 URL  
+            "https://dify.comlan.com/v1/workflows/run") # <--- 替换成你的 Dify API URL
 
-          # 检查 API 是否成功返回
+          # 检查 API 响应是否为空
           if [ -z "$API_RESPONSE" ]; then
-            echo "Error: Dify API returned an empty response."
+            echo "::error::Dify API returned an empty response."
             exit 1
           fi
 
-          # 使用 jq 解析 JSON 并将结果设置为此步骤的输出变量
-          # 假设 Dify 返回的 JSON 格式为 {"email_subject": "...", "email_body_html": "..."}
-          EMAIL_SUBJECT=$(echo $API_RESPONSE | jq -r '.data.email_subject // "Dify 每日报告"')
-          EMAIL_BODY=$(echo $API_RESPONSE | jq -r '.data.email_body_html // "无法从 Dify 获取报告内容。"')
-          
-          # 将解析出的内容设置为 GitHub Actions 的输出变量
-          echo "email_subject=$EMAIL_SUBJECT" >> $GITHUB_OUTPUT
-          echo "email_body=$EMAIL_BODY" >> $GITHUB_OUTPUT  
+          # 使用 jq (一个 JSON 处理器) 来解析返回的 JSON 数据
+          # 从响应中提取 'subject' 和 'html_content'
+          # `// "默认值"` 语法可以在 API 未返回对应字段时提供一个备用值，防止工作流失败
+          EMAIL_SUBJECT=$(echo $API_RESPONSE | jq -r '.data.subject // "Dify 每日报告"')
+          EMAIL_HTML=$(echo $API_RESPONSE | jq -r '.data.html_content // "无法从 Dify 获取邮件内容。"')
 
-      # 步骤 3: 使用上一步的结果发送邮件
-      - name: Send email action
+          # 这是 GitHub Actions 在步骤间传递多行数据的标准方法
+          # 我们将解析出的内容写入一个文件中，然后设置 GITHUB_OUTPUT
+          echo "email_subject<<EOF" >> $GITHUB_OUTPUT
+          echo "$EMAIL_SUBJECT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "email_html<<EOF" >> $GITHUB_OUTPUT
+          echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 步骤 2: 使用上一步从 Dify 获取的内容发送邮件
+      - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
           # 邮件服务器配置
@@ -67,9 +68,9 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件内容 - 从上一步 (call_dify) 的输出中获取
-          subject: ${{ steps.call_dify.outputs.email_subject }}
-          html_body: ${{ steps.call_dify.outputs.email_body }} # 使用 html_body 以便发送 HTML 格式
+          # 邮件内容 - 完全来自于上一步 (dify_content) 的输出
+          subject: ${{ steps.dify_content.outputs.email_subject }}
+          html_body: ${{ steps.dify_content.outputs.email_html }}
           
           # 收件人
           to: wang.tianyang@comlan.com
