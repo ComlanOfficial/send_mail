@@ -17,8 +17,8 @@ jobs:
     - name: 调用Dify Workflow获取数据
       id: dify-data
       run: |
-        # 设置Dify API配置
-        DIFY_API_URL="${{ secrets.DIFY_API_URL }}"
+        # 设置Dify API配置（URL直接写在代码中）
+        DIFY_API_URL="https://dify.comlan.com/v1/workflows/run"
         DIFY_API_KEY="${{ secrets.DIFY_API_KEY }}"
         
         echo "正在调用Dify Workflow..."
@@ -95,3 +95,8 @@ jobs:
         to: wang.tianyang@comlan.com
         from: ai.public@comlan.com
         content_type: 'text/html'  # 支持HTML格式显示
+        # 添加认证相关配置
+        secure: false
+        # 如果仍然有问题，可以尝试使用SSL
+        # server_port: 587
+        # secure: true
