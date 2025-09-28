@@ -18,7 +18,7 @@ jobs:
       id: test-email
       run: |
         echo "测试邮件配置..."
-        echo "测试内容<<EOF" >> $GITHUB_OUTPUT
+        echo "test_content<<EOF" >> $GITHUB_OUTPUT
         echo "这是一封测试邮件，用于验证邮件配置是否正确。" >> $GITHUB_OUTPUT
         echo "时间: $(date)" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
@@ -117,7 +117,7 @@ jobs:
         username: ${{ secrets.MAIL_USERNAME }}
         password: ${{ secrets.MAIL_PASSWORD }}
         subject: '测试邮件 - 验证配置 - $(date +"%Y-%m-%d %H:%M")'
-        body: ${{ steps.test-email.outputs.测试内容 }}
+        body: ${{ steps.test-email.outputs.test_content }}
         to: wang.tianyang@comlan.com
         from: ai.public@comlan.com
         content_type: 'text/plain'
