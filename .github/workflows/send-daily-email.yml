@@ -21,7 +21,7 @@ jobs:
         with:
           # 邮件服务器配置
           server_address: mail.comlan.com
-          server_port: 587
+          server_port: 25
           secure: false
           
           # 认证信息
