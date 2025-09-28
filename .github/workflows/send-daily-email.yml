@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Debug Version)
+name: Send Daily Email from Dify (Fixed Version)
 
 on:
   schedule:
@@ -11,20 +11,6 @@ jobs:
     name: Fetch from Dify and Send Email
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Test Dify API Connection
-        run: |
-          echo "测试Dify API连接..."
-          curl -v -X POST \
-            -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{"inputs": {}, "response_mode": "blocking", "user": "test"}' \
-            "https://dify.comlan.com/v1/workflows/run" \
-            --connect-timeout 30 \
-            --max-time 60
-
       - name: Fetch and Parse Email Content from Dify
         id: dify_content
         run: |
@@ -48,7 +34,11 @@ jobs:
             exit 1
           fi
           
-          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.email_html // "无法从 Dify 获取邮件内容。"')
+          # 修正：使用正确的JSON路径
+          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // "无法从 Dify 获取邮件内容。"')
+          
+          echo "提取的email_html长度: ${#EMAIL_HTML}"
+          echo "email_html前100字符: ${EMAIL_HTML:0:100}..."
           
           echo "email_html<<EOF" >> $GITHUB_OUTPUT
           echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
@@ -58,8 +48,8 @@ jobs:
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: mail.comlan.com
-          server_port: 25
-          secure: false
+          server_port: 465
+          secure: true
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "来自 Dify 的每日报告"
