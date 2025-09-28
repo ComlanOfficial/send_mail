@@ -60,7 +60,8 @@ jobs:
           
           # 邮件内容 - 直接使用上一步的原始输出
           # 使用 html_body 参数可以更好地兼容 HTML 和纯文本
-          html_body: ${{ steps.dify_content.outputs.raw_response }}
+          html_body: "2222"
+          # ${{ steps.dify_content.outputs.raw_response }}
           
           # 收件人
           to: wang.tianyang@comlan.com
