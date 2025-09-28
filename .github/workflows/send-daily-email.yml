@@ -1,0 +1,47 @@
+# .github/workflows/send-daily-email.yml
+
+name: Send Daily Email
+
+on:
+  schedule:
+    # 每天的 UTC 时间上午 8 点运行
+    - cron: '0 8 * * *'
+  
+  # 允许手动触发测试
+  workflow_dispatch:
+
+jobs:
+  send_email_job:
+    runs-on: ubuntu-latest
+    name: Send a daily report email
+
+    steps:
+      - name: Send email action
+        uses: dawidd6/action-send-mail@v3
+        with:
+          # 邮件服务器配置
+          server_address: mail.comlan.com
+          server_port: 587
+          secure: false
+          
+          # 认证信息
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+
+          # 邮件内容
+          subject: '每日报告 - ${{ github.workflow }}'
+          
+          body: |
+            你好,
+
+            这是一封来自 GitHub Actions 的自动邮件。
+            执行时间: ${{ github.run_number }}
+            仓库: ${{ github.repository }}
+
+            祝好!
+
+          # 收件人
+          to: wang.tianyang@comlan.com
+          
+          # 发件人
+          from: ${{ secrets.MAIL_USERNAME }}
