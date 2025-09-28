@@ -1,13 +1,10 @@
 # .github/workflows/send-daily-email.yml
 
-name: Send Daily Email from Dify
+name: Send Daily Email from Dify (Final Version)
 
 on:
   schedule:
-    # 每天的 UTC 时间上午 8 点运行 (北京时间下午 4 点)
     - cron: '0 8 * * *'
-  
-  # 允许在 Actions 页面手动触发此工作流，方便测试
   workflow_dispatch:
 
 jobs:
@@ -16,11 +13,10 @@ jobs:
     name: Fetch from Dify and Send Email
 
     steps:
-      # 步骤 1: 调用 Dify API 并使用 jq 解析返回的 JSON
+      # 步骤 1: 调用 Dify API 并解析返回的 JSON (包含调试输出)
       - name: Fetch and Parse Email Content from Dify
         id: dify_content
         run: |
-          # 调用 Dify API 并将返回结果存入变量
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -31,13 +27,18 @@ jobs:
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
 
+          # --- 关键调试代码：打印出 Dify 返回的原始数据 ---
+          echo "Dify Raw Response:"
+          echo "$API_RESPONSE"
+          # ------------------------------------------------
+
           # 检查 API 响应是否为空
           if [ -z "$API_RESPONSE" ]; then
             echo "::error::Dify API returned an empty response."
             exit 1
           fi
           
-          # 【关键】使用 jq 解析 JSON，并提取 'email_html' 字段
+          # 使用 jq 解析 JSON，并提取 'email_html' 字段
           EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.email_html // "无法从 Dify 获取邮件内容。"')
           
           # 将解析出的内容设置为 GitHub Actions 的输出变量
@@ -49,7 +50,7 @@ jobs:
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
-          # 邮件服务器配置 - 已修正为推荐的加密端口
+          # 邮件服务器配置 - 已修正为行业标准的加密端口
           server_address: mail.comlan.com
           server_port: 465
           secure: true
@@ -59,11 +60,11 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
 
           # 邮件内容
-          subject: "来自 Dify 的每日报告" # 主题是固定的
+          subject: "来自 Dify 的每日报告"
           html_body: ${{ steps.dify_content.outputs.email_html }}
           
           # 收件人
-          to: wang.tianyang@comlan.com
+          to: wang.tantyang@comlan.com
           
           # 发件人
           from: ${{ secrets.MAIL_USERNAME }}
