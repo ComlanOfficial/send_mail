@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Correct Version)
+name: Send Daily Email from Dify (Debug Version)
 
 on:
   schedule:
@@ -26,12 +26,30 @@ jobs:
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
           
+          echo "=== API响应 ==="
+          echo "$API_RESPONSE"
+          echo "=== 响应结束 ==="
+          
           if [ -z "$API_RESPONSE" ]; then
             echo "::error::Dify API返回空响应"
             exit 1
           fi
           
+          # 检查JSON结构
+          echo "=== 检查JSON结构 ==="
+          echo "data字段:"
+          echo "$API_RESPONSE" | jq '.data'
+          echo "outputs字段:"
+          echo "$API_RESPONSE" | jq '.data.outputs'
+          echo "email_html字段:"
+          echo "$API_RESPONSE" | jq '.data.outputs.email_html'
+          
           EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // empty')
+          
+          echo "=== 提取的email_html ==="
+          echo "长度: ${#EMAIL_HTML}"
+          echo "前200字符: ${EMAIL_HTML:0:200}..."
+          echo "后200字符: ${EMAIL_HTML: -200}"
           
           if [ -z "$EMAIL_HTML" ]; then
             echo "::warning::使用备用内容"
