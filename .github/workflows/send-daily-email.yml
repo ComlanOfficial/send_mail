@@ -1,70 +1,61 @@
-name: Send Daily Email from Dify (Curl Version)
+# .github/workflows/send-daily-email.yml
+
+name: Send Daily Email
 
 on:
   schedule:
+    # 每天的 UTC 时间上午 8 点运行 (可以换算成你的时区)
+    # Cron 语法: 分 时 日 月 周
+    # '0 8 * * *' 表示每天的 8:00
     - cron: '0 8 * * *'
+  
+  # 这个 workflow_dispatch 允许你手动在 Actions 页面点击按钮来测试运行
   workflow_dispatch:
 
 jobs:
   send_email_job:
     runs-on: ubuntu-latest
-    name: Fetch from Dify and Send Email
-    timeout-minutes: 5
+    name: Send a daily report email
 
     steps:
-      - name: Fetch and Parse Email Content from Dify
-        id: dify_content
-        run: |
-          echo "开始调用Dify API..."
+      - name: Send email action
+        uses: dawidd6/action-send-mail@v3
+        with:
+          # 必需: 你的邮件服务器地址. 
+          # 例如，QQ邮箱是 smtp.qq.com, Gmail是 smtp.gmail.com
+          server_address: mail.comlan.com
           
-          API_RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-                  "inputs": {},
-                  "response_mode": "blocking",
-                  "user": "github-action-runner"
-                }' \
-            "https://dify.comlan.com/v1/workflows/run")
-          
-          if [ -z "$API_RESPONSE" ]; then
-            echo "::error::Dify API返回空响应"
-            exit 1
-          fi
-          
-          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // empty')
-          
-          if [ -z "$EMAIL_HTML" ]; then
-            echo "::warning::使用备用内容"
-            EMAIL_HTML="<html><body><h1>每日AI新闻摘要</h1><p>抱歉，今日内容获取失败，请稍后重试。</p></body></html>"
-          fi
-          
-          echo "email_html<<EOF" >> $GITHUB_OUTPUT
-          echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # 必需: 你的邮件服务器端口.
+          # 通常是 465 (SSL) 或 587 (TLS).
+          server_port: 25
 
-      - name: Send email using curl
-        run: |
-          echo "使用curl发送邮件..."
-          
-          # 创建邮件文件
-          cat > email.txt << EOF
-          From: ${{ secrets.MAIL_USERNAME }}
-          To: wang.tantyang@comlan.com
-          Subject: 来自 Dify 的每日报告
-          Content-Type: text/html; charset=UTF-8
-          
-          ${{ steps.dify_content.outputs.email_html }}
-          EOF
-          
-          echo "邮件内容已创建，开始发送..."
-          
-          # 使用curl发送邮件
-          timeout 60 curl -v \
-            --url smtp://mail.comlan.com:25 \
-            --mail-from "${{ secrets.MAIL_USERNAME }}" \
-            --mail-rcpt "wang.tantyang@comlan.com" \
-            --upload-file email.txt \
-            --user "${{ secrets.MAIL_USERNAME }}:${{ secrets.MAIL_PASSWORD }}" \
-            --connect-timeout 30 \
-            --max-time 60
+          # 必需: 你用来发邮件的邮箱账号
+          username: ${{ secrets.MAIL_USERNAME }}
+
+          # 必需: 你的邮箱密码或应用专用密码 (非常重要!)
+          password: ${{ secrets.MAIL_PASSWORD }}
+
+          # 必需: 邮件主题
+          subject: '每日报告 - ${{ github.workflow }}'
+
+          # 必需: 邮件正文. 你可以使用 HTML.
+          # 你也可以用 from_file: 来读取文件内容作为正文
+          body: |
+            你好,
+
+            这是一封来自 GitHub Actions 的自动邮件。
+            今天是 {{ date }}.
+
+            祝好!
+
+          # 必需: 收件人邮箱 (可以有多个，用逗号隔开)
+          to: wang.tianyang@comlan.com
+
+          # 可选: 发件人邮箱
+          from: ai.public@comlan.com
+
+          # 可选: 抄送 (CC)
+          # cc: user3@example.com,user4@example.com
+
+          # 可选: 密送 (BCC)
+          # bcc: user5@example.com
