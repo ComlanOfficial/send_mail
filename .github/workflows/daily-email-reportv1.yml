@@ -2,147 +2,45 @@ name: 每日邮件报告
 
 on:
   schedule:
-    # 每天上午9点执行 (UTC时间，北京时间17点)
     - cron: '0 1 * * *'
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   send-daily-report:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 检查代码
-      uses: actions/checkout@v4
-      
-    - name: 调用Dify Workflow获取数据
-      id: dify-data
+    - name: 调用Dify获取数据
+      id: get-data
       run: |
-        # 设置Dify API配置（URL直接写在代码中）
-        DIFY_API_URL="https://dify.comlan.com/v1/workflows/run"
-        DIFY_API_KEY="${{ secrets.DIFY_API_KEY }}"
-        
-        echo "正在调用Dify Workflow..."
-        echo "API URL: $DIFY_API_URL"
-        echo "API Key长度: ${#DIFY_API_KEY}"
-        
-        # 测试网络连接
-        echo "测试网络连接..."
-        curl -s --connect-timeout 10 "https://dify.comlan.com" > /dev/null
-        if [ $? -eq 0 ]; then
-          echo "网络连接正常"
-        else
-          echo "网络连接失败"
-        fi
-        
-        # 调用Dify Workflow API
-        echo "发送API请求..."
-        response=$(curl -s -X POST "$DIFY_API_URL" \
-          -H "Authorization: Bearer $DIFY_API_KEY" \
+        curl -X POST "https://dify.comlan.com/v1/workflows/run" \
+          -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
           -H "Content-Type: application/json" \
-          -d '{
-            "inputs": {},
-            "response_mode": "blocking",
-            "user": "github-actions-'$(date +%Y%m%d-%H%M%S)'"
-          }' \
-          --connect-timeout 30 \
-          --max-time 60 \
-          -w "HTTP状态码: %{http_code}\n" 2>&1)
+          -d '{"inputs": {}, "response_mode": "blocking", "user": "github-actions"}' \
+          -o response.json
         
-        # 检查API调用是否成功
-        if [ $? -eq 0 ] && [ -n "$response" ]; then
-          echo "Dify Workflow调用成功"
-          echo "原始响应长度: $(echo "$response" | wc -c) 字符"
-          echo "原始响应内容:"
-          echo "$response"
-          
-          # 直接保存原始响应，不做任何修改
-          echo "response<<EOF" >> $GITHUB_OUTPUT
-          echo "$response" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        # 提取HTML内容
+        if jq -e '.data.outputs.email_html' response.json > /dev/null 2>&1; then
+          jq -r '.data.outputs.email_html' response.json > email_content.html
+          echo "content_type=html" >> $GITHUB_OUTPUT
         else
-          echo "Dify Workflow调用失败"
-          echo "curl退出码: $?"
-          echo "响应内容: $response"
-          echo "使用默认内容"
-          echo "response<<EOF" >> $GITHUB_OUTPUT
-          echo '{"error": "Dify API调用失败", "message": "请检查API配置和网络连接", "timestamp": "'$(date)'"}' >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          cat response.json > email_content.html
+          echo "content_type=json" >> $GITHUB_OUTPUT
         fi
         
-    - name: 处理Dify返回数据（使用Python安全处理）
-      id: process-data
-      run: |
-        # 获取Dify返回的原始数据
-        dify_response='${{ steps.dify-data.outputs.response }}'
+        echo "email_content<<EOF" >> $GITHUB_OUTPUT
+        cat email_content.html >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
         
-        echo "=== Dify返回的原始数据 ==="
-        echo "$dify_response"
-        echo "=== 原始数据结束 ==="
-        
-        # 使用Python安全处理JSON数据
-        DIFY_RESPONSE="$dify_response" python3 << 'EOF'
-import json
-import sys
-import os
-
-# 从环境变量获取响应数据
-dify_response = os.environ.get('DIFY_RESPONSE', '')
-print(f"开始处理数据，长度: {len(dify_response)} 字符")
-
-try:
-    # 尝试解析JSON
-    data = json.loads(dify_response)
-    print("成功解析JSON数据")
-    
-    # 尝试提取email_html字段
-    email_html = None
-    if 'data' in data and 'outputs' in data['data'] and 'email_html' in data['data']['outputs']:
-        email_html = data['data']['outputs']['email_html']
-        print("从 data.outputs.email_html 提取内容")
-    elif 'outputs' in data and 'email_html' in data['outputs']:
-        email_html = data['outputs']['email_html']
-        print("从 outputs.email_html 提取内容")
-    elif 'email_html' in data:
-        email_html = data['email_html']
-        print("从 email_html 提取内容")
-    
-    if email_html and email_html != "null":
-        print("成功提取HTML内容")
-        content_type = "html"
-        email_content = email_html
-    else:
-        print("未找到email_html字段，使用原始JSON")
-        content_type = "json"
-        email_content = dify_response
-except json.JSONDecodeError:
-    print("非JSON格式，直接使用原始内容")
-    content_type = "text"
-    email_content = dify_response
-except Exception as e:
-    print(f"处理过程中出错: {e}")
-    content_type = "text"
-    email_content = dify_response
-
-print(f"最终邮件内容类型: {content_type}")
-print(f"内容长度: {len(email_content)} 字符")
-
-# 输出到GitHub Actions
-with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-    f.write(f"email_content<<EOF\n{email_content}\nEOF\n")
-    f.write(f"content_type<<EOF\n{content_type}\nEOF\n")
-
-print("数据处理完成")
-EOF
-        
-    - name: 发送邮件（使用Dify数据）
+    - name: 发送邮件
       uses: dawidd6/action-send-mail@v3
       with:
         server_address: mail.comlan.com
         server_port: 25
         username: ${{ secrets.MAIL_USERNAME }}
         password: ${{ secrets.MAIL_PASSWORD }}
-        subject: '每日报告 - ${{ github.workflow }} - $(date +"%Y-%m-%d %H:%M")'
-        body: ${{ steps.process-data.outputs.email_content }}
+        subject: '每日报告 - $(date +"%Y-%m-%d")'
+        body: ${{ steps.get-data.outputs.email_content }}
         to: wang.tianyang@comlan.com
         from: ai.public@comlan.com
         content_type: 'text/html'
