@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Final Working Version)
+name: Send Daily Email from Dify (Correct Version)
 
 on:
   schedule:
@@ -26,15 +26,11 @@ jobs:
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
           
-          echo "=== API响应 ==="
-          echo "$API_RESPONSE"
-          
           if [ -z "$API_RESPONSE" ]; then
             echo "::error::Dify API返回空响应"
             exit 1
           fi
           
-          # 提取email_html内容
           EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // empty')
           
           if [ -z "$EMAIL_HTML" ]; then
@@ -54,6 +50,6 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "来自 Dify 的每日报告"
-          html_body: ${{ steps.dify_content.outputs.email_html }}
+          body: ${{ steps.dify_content.outputs.email_html }}
           to: wang.tianyang@comlan.com
           from: ai.public@comlan.com
