@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify (Debug Version)
+name: Send Daily Email from Dify (Minimal Test)
 
 on:
   schedule:
@@ -11,63 +11,14 @@ jobs:
     name: Send a daily report email
 
     steps:
-      - name: Fetch and Parse Email Content from Dify
-        id: dify_content
-        run: |
-          echo "开始调用Dify API..."
-          
-          API_RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-                  "inputs": {},
-                  "response_mode": "blocking",
-                  "user": "github-action-runner"
-                }' \
-            "https://dify.comlan.com/v1/workflows/run")
-          
-          echo "=== API响应 ==="
-          echo "$API_RESPONSE"
-          echo "=== 响应结束 ==="
-          
-          if [ -z "$API_RESPONSE" ]; then
-            echo "::error::Dify API返回空响应"
-            exit 1
-          fi
-          
-          # 检查JSON结构
-          echo "=== 检查JSON结构 ==="
-          echo "data字段:"
-          echo "$API_RESPONSE" | jq '.data'
-          echo "outputs字段:"
-          echo "$API_RESPONSE" | jq '.data.outputs'
-          echo "email_html字段:"
-          echo "$API_RESPONSE" | jq '.data.outputs.email_html'
-          
-          EMAIL_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.email_html // empty')
-          
-          echo "=== 提取的email_html ==="
-          echo "长度: ${#EMAIL_HTML}"
-          echo "前200字符: ${EMAIL_HTML:0:200}..."
-          echo "后200字符: ${EMAIL_HTML: -200}"
-          
-          if [ -z "$EMAIL_HTML" ]; then
-            echo "::warning::使用备用内容"
-            EMAIL_HTML="<html><body><h1>每日AI新闻摘要</h1><p>抱歉，今日内容获取失败，请稍后重试。</p></body></html>"
-          fi
-          
-          echo "email_html<<EOF" >> $GITHUB_OUTPUT
-          echo "$EMAIL_HTML" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Send email with Dify content
+      - name: Send simple test email
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: mail.comlan.com
           server_port: 25
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "来自 Dify 的每日报告"
-          body: ${{ steps.dify_content.outputs.email_html }}
+          subject: "测试邮件"
+          body: "这是一封测试邮件，用于验证邮件服务器配置。"
           to: wang.tianyang@comlan.com
           from: ai.public@comlan.com
