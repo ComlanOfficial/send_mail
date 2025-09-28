@@ -30,9 +30,7 @@ jobs:
           -H "Content-Type: application/json" \
           -d '{
             "inputs": {},
-            "query": "生成每日报告",
             "response_mode": "blocking",
-            "conversation_id": "",
             "user": "github-actions-'$(date +%Y%m%d-%H%M%S)'"
           }' 2>/dev/null)
         
@@ -95,8 +93,3 @@ jobs:
         to: wang.tianyang@comlan.com
         from: ai.public@comlan.com
         content_type: 'text/html'  # 支持HTML格式显示
-        # 添加认证相关配置
-        secure: false
-        # 如果仍然有问题，可以尝试使用SSL
-        # server_port: 587
-        # secure: true
