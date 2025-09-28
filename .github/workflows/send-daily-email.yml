@@ -1,15 +1,97 @@
-- name: Send email action
-  uses: dawidd6/action-send-mail@v3
-  with:
-    server_address: mail.comlan.com
-    server_port: 25
-    username: ${{ secrets.MAIL_USERNAME }}
-    password: ${{ secrets.MAIL_PASSWORD }}
-    subject: '每日报告 - ${{ github.workflow }}'
-    body: |
-      你好,
-      这是一封来自 GitHub Actions 的自动邮件。
-      今天是 {{ date }}.
-      祝好!
-    to: wang.tianyang@comlan.com
-    from: ai.public@comlan.com
+name: 每日邮件报告
+
+on:
+  schedule:
+    # 每天上午9点执行 (UTC时间，北京时间17点)
+    - cron: '0 1 * * *'
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  send-daily-report:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检查代码
+      uses: actions/checkout@v4
+      
+    - name: 调用Dify Workflow获取数据
+      id: dify-data
+      run: |
+        # 设置Dify API配置
+        DIFY_API_URL="${{ secrets.DIFY_API_URL }}"
+        DIFY_API_KEY="${{ secrets.DIFY_API_KEY }}"
+        
+        echo "正在调用Dify Workflow..."
+        echo "API URL: $DIFY_API_URL"
+        
+        # 调用Dify Workflow API
+        response=$(curl -s -X POST "$DIFY_API_URL" \
+          -H "Authorization: Bearer $DIFY_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "inputs": {},
+            "query": "生成每日报告",
+            "response_mode": "blocking",
+            "conversation_id": "",
+            "user": "github-actions-'$(date +%Y%m%d-%H%M%S)'"
+          }' 2>/dev/null)
+        
+        # 检查API调用是否成功
+        if [ $? -eq 0 ] && [ -n "$response" ]; then
+          echo "Dify Workflow调用成功"
+          echo "原始响应长度: $(echo "$response" | wc -c) 字符"
+          
+          # 直接保存原始响应，不做任何修改
+          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo "$response" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "Dify Workflow调用失败，使用默认内容"
+          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo '{"error": "Dify API调用失败", "message": "请检查API配置和网络连接"}' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: 处理Dify返回数据（保持原始格式）
+      id: process-data
+      run: |
+        # 获取Dify返回的原始数据
+        dify_response='${{ steps.dify-data.outputs.response }}'
+        
+        echo "=== Dify返回的原始数据 ==="
+        echo "$dify_response"
+        echo "=== 原始数据结束 ==="
+        
+        # 尝试检测内容类型
+        if echo "$dify_response" | grep -q "<!DOCTYPE html\|<html"; then
+          echo "检测到HTML格式内容"
+          content_type="html"
+        elif echo "$dify_response" | grep -q "^{.*}$"; then
+          echo "检测到JSON格式内容"
+          content_type="json"
+        else
+          echo "检测到纯文本格式内容"
+          content_type="text"
+        fi
+        
+        # 直接使用原始响应，不做任何修改
+        echo "email_content<<EOF" >> $GITHUB_OUTPUT
+        echo "$dify_response" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        echo "content_type<<EOF" >> $GITHUB_OUTPUT
+        echo "$content_type" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: 发送邮件（保持原始格式）
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: mail.comlan.com
+        server_port: 25
+        username: ${{ secrets.MAIL_USERNAME }}
+        password: ${{ secrets.MAIL_PASSWORD }}
+        subject: '每日报告 - ${{ github.workflow }} - $(date +"%Y-%m-%d %H:%M")'
+        body: ${{ steps.process-data.outputs.email_content }}
+        to: wang.tianyang@comlan.com
+        from: ai.public@comlan.com
+        content_type: 'text/html'  # 支持HTML格式显示
