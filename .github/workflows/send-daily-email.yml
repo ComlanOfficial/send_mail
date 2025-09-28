@@ -14,6 +14,15 @@ jobs:
     - name: 检查代码
       uses: actions/checkout@v4
       
+    - name: 测试邮件配置（先不调用Dify）
+      id: test-email
+      run: |
+        echo "测试邮件配置..."
+        echo "测试内容<<EOF" >> $GITHUB_OUTPUT
+        echo "这是一封测试邮件，用于验证邮件配置是否正确。" >> $GITHUB_OUTPUT
+        echo "时间: $(date)" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+      
     - name: 调用Dify Workflow获取数据
       id: dify-data
       run: |
@@ -23,8 +32,19 @@ jobs:
         
         echo "正在调用Dify Workflow..."
         echo "API URL: $DIFY_API_URL"
+        echo "API Key长度: ${#DIFY_API_KEY}"
+        
+        # 测试网络连接
+        echo "测试网络连接..."
+        curl -s --connect-timeout 10 "https://dify.comlan.com" > /dev/null
+        if [ $? -eq 0 ]; then
+          echo "网络连接正常"
+        else
+          echo "网络连接失败"
+        fi
         
         # 调用Dify Workflow API
+        echo "发送API请求..."
         response=$(curl -s -X POST "$DIFY_API_URL" \
           -H "Authorization: Bearer $DIFY_API_KEY" \
           -H "Content-Type: application/json" \
@@ -32,21 +52,29 @@ jobs:
             "inputs": {},
             "response_mode": "blocking",
             "user": "github-actions-'$(date +%Y%m%d-%H%M%S)'"
-          }' 2>/dev/null)
+          }' \
+          --connect-timeout 30 \
+          --max-time 60 \
+          -w "HTTP状态码: %{http_code}\n" 2>&1)
         
         # 检查API调用是否成功
         if [ $? -eq 0 ] && [ -n "$response" ]; then
           echo "Dify Workflow调用成功"
           echo "原始响应长度: $(echo "$response" | wc -c) 字符"
+          echo "原始响应内容:"
+          echo "$response"
           
           # 直接保存原始响应，不做任何修改
           echo "response<<EOF" >> $GITHUB_OUTPUT
           echo "$response" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         else
-          echo "Dify Workflow调用失败，使用默认内容"
+          echo "Dify Workflow调用失败"
+          echo "curl退出码: $?"
+          echo "响应内容: $response"
+          echo "使用默认内容"
           echo "response<<EOF" >> $GITHUB_OUTPUT
-          echo '{"error": "Dify API调用失败", "message": "请检查API配置和网络连接"}' >> $GITHUB_OUTPUT
+          echo '{"error": "Dify API调用失败", "message": "请检查API配置和网络连接", "timestamp": "'$(date)'"}' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         fi
         
@@ -81,15 +109,15 @@ jobs:
         echo "$content_type" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
         
-    - name: 发送邮件（保持原始格式）
+    - name: 发送测试邮件（验证邮件配置）
       uses: dawidd6/action-send-mail@v3
       with:
         server_address: mail.comlan.com
         server_port: 25
         username: ${{ secrets.MAIL_USERNAME }}
         password: ${{ secrets.MAIL_PASSWORD }}
-        subject: '每日报告 - ${{ github.workflow }} - $(date +"%Y-%m-%d %H:%M")'
-        body: ${{ steps.process-data.outputs.email_content }}
+        subject: '测试邮件 - 验证配置 - $(date +"%Y-%m-%d %H:%M")'
+        body: ${{ steps.test-email.outputs.测试内容 }}
         to: wang.tianyang@comlan.com
         from: ai.public@comlan.com
-        content_type: 'text/html'  # 支持HTML格式显示
+        content_type: 'text/plain'
