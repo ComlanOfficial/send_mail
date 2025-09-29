@@ -1,6 +1,6 @@
 # .github/workflows/send-daily-email.yml
 
-name: Send Daily Email from Dify
+name: Send Daily Email from DifyV11111
 
 on:
   schedule:
@@ -20,8 +20,7 @@ jobs:
       - name: Fetch Content from Dify
         id: fetch_dify_content # 为这个步骤设置一个 ID，方便后面引用
         run: |
-          # 使用 curl 发送 POST 请求到你的 Dify 工作流 API
-          # 注意替换 YOUR_DIFY_WORKFLOW_URL 为你真实的 Dify 工作流 URL
+          # 1. 请务必将下面的 YOUR_DIFY_WORKFLOW_URL 替换为你的 Dify 工作流 URL
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -30,7 +29,12 @@ jobs:
                   "response_mode": "blocking",
                   "user": "github-action-runner"
                 }' \
-            "https://dify.comlan.com/v1/workflows/run")
+            "YOUR_DIFY_WORKFLOW_URL")
+
+          # 2. (调试代码) 下面这两行会把 Dify 返回的原始数据完整地打印到日志中
+          echo "--- Raw Response from Dify Start ---"
+          echo "$API_RESPONSE"
+          echo "--- Raw Response from Dify End ---"
 
           # 检查 API 响应是否为空，如果为空则报错并中止
           if [ -z "$API_RESPONSE" ]; then
@@ -38,12 +42,11 @@ jobs:
             exit 1
           fi
           
-          # Dify 工作流通常返回一个 JSON 对象，我们需要提取其中的文本内容。
-          # 假设内容在 .data.outputs.text 字段中，我们使用 jq 工具来解析它。
-          # -r 参数可以输出原始字符串，而不是带引号的 JSON 字符串。
+          # 3. (关键步骤) 解析 JSON 并提取正文内容
+          #    你很可能需要根据上面打印出的日志，修改 .data.outputs.text 这个路径
           CONTENT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.text')
           
-          # 为了能跨越多行，我们使用一种特殊的方式将内容设置为步骤的输出
+          # 将提取出的内容设置为步骤的输出变量
           echo "dify_body<<EOF" >> $GITHUB_OUTPUT
           echo "$CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -63,7 +66,5 @@ jobs:
           to: bo.wang@comlan.com,wang.tianyang@comlan.com
           from: ai.public@comlan.com
           
-          # 必需: 邮件正文. 
-          # 我们使用 html_body 以更好地支持 Dify 可能返回的 HTML 格式。
-          # 它的值引用了上一个步骤 (id: fetch_dify_content) 的输出 (dify_body)。
+          # 使用上一步的输出作为邮件正文
           html_body: ${{ steps.fetch_dify_content.outputs.dify_body }}
