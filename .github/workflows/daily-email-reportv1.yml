@@ -12,7 +12,13 @@ on:
 
 jobs:
   send_email_job:
-    runs-on: ubuntu-latest
+    # ================= 重要提醒 =================
+    # 因为此工作流需要访问公司内部服务器 (dify.comlan.com 和 mail.comlan.com),
+    # 所以必须在自托管运行器 (Self-hosted Runner) 上运行。
+    # 请将 'ubuntu-latest' 修改为 'self-hosted'。
+    # runs-on: ubuntu-latest  <-- 在公网服务器上运行，将会失败
+    runs-on: self-hosted      # <-- 在您公司内网的自托管运行器上运行
+
     name: Fetch from Dify and Send Email
 
     steps:
@@ -46,25 +52,26 @@ jobs:
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
-          # 邮件服务器配置 (根据你的要求，保持不变)
+          # 邮件服务器配置 (请与您的IT部门确认最准确的配置)
           server_address: mail.comlan.com
-          server_port: 25
-          secure: false # 如果你的服务器不需要SSL/TLS
+          # 推荐使用 587 端口 (STARTTLS)，比 25 端口更安全
+          server_port: 587
+          # 当使用 587 端口时, secure 通常为 false, 因为它会通过 STARTTLS 升级连接
+          secure: false 
           
           # 认证信息
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件主题 (可以硬编码一个，或者也由Dify返回)
+          # 邮件主题
           subject: '来自 Dify 的每日报告'
           
-          # 邮件内容 - 直接使用上一步的原始输出
-          # 使用 html_body 参数可以更好地兼容 HTML 和纯文本
-          html_body: "2222"
-          # ${{ steps.dify_content.outputs.raw_response }}
+          # ============ 语法修正 ============
+          # 将上一步的输出内容赋值给 html_body
+          html_body: ${{ steps.dify_content.outputs.raw_response }}
           
           # 收件人
           to: wang.tianyang@comlan.com
           
           # 发件人
-          from: ai.public@comlan.com # 使用你提供的发件人地址
+          from: ai.public@comlan.com
