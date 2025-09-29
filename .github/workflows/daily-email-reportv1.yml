@@ -29,7 +29,7 @@ jobs:
                   "response_mode": "blocking",
                   "user": "github-action-runner"
                 }' \
-            "YOUR_DIFY_WORKFLOW_URL")
+          "https://dify.comlan.com/v1/workflows/run")
 
           # 2. (调试代码) 下面这两行会把 Dify 返回的原始数据完整地打印到日志中
           echo "--- Raw Response from Dify Start ---"
