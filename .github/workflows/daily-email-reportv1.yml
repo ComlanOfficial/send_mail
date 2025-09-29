@@ -1,4 +1,4 @@
-# .github/workflows/send-dify-email.yml
+# .github/workflows/send-daily-email.yml
 
 name: Send Daily Email from Dify
 
@@ -12,20 +12,16 @@ on:
 
 jobs:
   send_email_job:
-    # ================= 重要提醒 =================
-    # 因为此工作流需要访问公司内部服务器 (dify.comlan.com 和 mail.comlan.com),
-    # 所以必须在自托管运行器 (Self-hosted Runner) 上运行。
-    # 请将 'ubuntu-latest' 修改为 'self-hosted'。
-    # runs-on: ubuntu-latest  <-- 在公网服务器上运行，将会失败
-    runs-on: self-hosted      # <-- 在您公司内网的自托管运行器上运行
-
+    runs-on: ubuntu-latest
     name: Fetch from Dify and Send Email
 
     steps:
-      # 步骤 1: 调用 Dify API，并将返回的原始数据作为输出
+      # 步骤 1: 调用 Dify API，并将返回的内容作为输出
       - name: Fetch Content from Dify
-        id: dify_content
+        id: fetch_dify_content # 为这个步骤设置一个 ID，方便后面引用
         run: |
+          # 使用 curl 发送 POST 请求到你的 Dify 工作流 API
+          # 注意替换 YOUR_DIFY_WORKFLOW_URL 为你真实的 Dify 工作流 URL
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -42,36 +38,32 @@ jobs:
             exit 1
           fi
           
-          # 将从 Dify 获取到的全部原始响应内容设置为输出变量
-          # 使用 EOF 来处理多行字符串，确保格式完全保留
-          echo "raw_response<<EOF" >> $GITHUB_OUTPUT
-          echo "$API_RESPONSE" >> $GITHUB_OUTPUT
+          # Dify 工作流通常返回一个 JSON 对象，我们需要提取其中的文本内容。
+          # 假设内容在 .data.outputs.text 字段中，我们使用 jq 工具来解析它。
+          # -r 参数可以输出原始字符串，而不是带引号的 JSON 字符串。
+          CONTENT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.text')
+          
+          # 为了能跨越多行，我们使用一种特殊的方式将内容设置为步骤的输出
+          echo "dify_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 步骤 2: 使用上一步获取到的原始数据作为邮件内容发送
-      - name: Send email
+      # 步骤 2: 发送邮件，使用上一步获取到的内容作为正文
+      - name: Send email action
         uses: dawidd6/action-send-mail@v3
         with:
-          # 邮件服务器配置 (请与您的IT部门确认最准确的配置)
+          # --- 您的邮件服务器配置 (保持不变) ---
           server_address: mail.comlan.com
-          # 推荐使用 587 端口 (STARTTLS)，比 25 端口更安全
-          server_port: 587
-          # 当使用 587 端口时, secure 通常为 false, 因为它会通过 STARTTLS 升级连接
-          secure: false 
-          
-          # 认证信息
+          server_port: 25
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件主题
-          subject: '来自 Dify 的每日报告'
-          
-          # ============ 语法修正 ============
-          # 将上一步的输出内容赋值给 html_body
-          html_body: ${{ steps.dify_content.outputs.raw_response }}
-          
-          # 收件人
-          to: wang.tianyang@comlan.com
-          
-          # 发件人
+          # --- 您的邮件信息 ---
+          subject: '每日报告 - 来自Dify'
+          to: bo.wang@comlan.com,wang.tianyang@comlan.com
           from: ai.public@comlan.com
+          
+          # 必需: 邮件正文. 
+          # 我们使用 html_body 以更好地支持 Dify 可能返回的 HTML 格式。
+          # 它的值引用了上一个步骤 (id: fetch_dify_content) 的输出 (dify_body)。
+          html_body: ${{ steps.fetch_dify_content.outputs.dify_body }}
