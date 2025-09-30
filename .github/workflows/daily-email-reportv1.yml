@@ -57,7 +57,7 @@ jobs:
         uses: dawidd6/action-send-mail@v3
         with:
           # 必需: 修正为我们测试通过的邮件服务器地址
-          server_address: mail.comlan.com
+          server_address: smtp.comlan.com
           
           # 必需: 修正为我们测试通过的邮件服务器端口
           server_port: 587
