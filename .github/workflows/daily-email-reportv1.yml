@@ -1,27 +1,25 @@
-name: Send Daily Email from Dify
+name: Send Daily Email from Dify (Single Job)
 
 on:
   schedule:
-    # 每天的 UTC 时间上午 8 点运行 (对应北京时间下午 4 点)
+    # 每天的 UTC 时间 8 点运行 (对应北京时间下午 4 点)
     - cron: '0 8 * * *'
   
   # 允许在 Actions 页面手动触发此工作流，方便测试
   workflow_dispatch:
 
 jobs:
-  # 任务 1: 从 Dify 获取邮件内容
-  fetch_dify_content:
+  fetch_and_send_email:
     runs-on: ubuntu-latest
-    name: "第一步: 从 Dify 获取内容"
-    # 定义此任务的输出，我们只需要HTML正文
-    outputs:
-      html_body: ${{ steps.fetch_dify.outputs.html_content }}
+    name: Fetch Dify Content and Send Email
 
     steps:
-      - name: Fetch Content from Dify
-        id: fetch_dify # 为这个步骤设置一个 ID
+      # 步骤 1: 从 Dify 获取邮件的 HTML 内容
+      - name: "Step 1: Fetch Content from Dify"
+        # 为这个步骤设置一个ID，以便下一步可以引用它的输出
+        id: fetch_dify
         run: |
-          # 1. 调用您的 Dify 工作流 URL
+          # 调用 Dify 工作流 API
           API_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -32,73 +30,47 @@ jobs:
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
 
-          # 2. (调试用) 打印 Dify 返回的原始数据
+          # 打印原始返回，方便调试
           echo "--- Raw Response from Dify ---"
           echo "$API_RESPONSE"
           echo "------------------------------"
 
-          # 3. 在解析前，先验证 Dify 的响应是否为有效的 JSON
+          # 验证返回的是否为有效的JSON
           if ! echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
-            echo "::error::Failed to parse JSON response from Dify. The API might be down or the API Key is invalid."
+            echo "::error::Failed to parse JSON response from Dify. Check API Key or Dify status."
             exit 1
           fi
 
-          # 4. (关键修正) 从 JSON 中解析出 HTML 正文
-          #    根据您的日志，变量名是 'html_content'
+          # 解析出 html_content 字段
           HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html_content')
 
-          # 5. 检查内容是否为空
+          # 检查内容是否为空
           if [ -z "$HTML" ]; then
-            echo "::error::Dify API did not return valid HTML content from the 'html_content' field."
+            echo "::error::Dify API did not return content from the 'html_content' field."
             exit 1
           fi
 
-          # 6. 将解析出的内容设置为任务的输出变量
-          #    使用特殊语法来处理可能的多行 HTML 内容
+          # 将HTML内容设置为此步骤的输出变量，供下一步使用
           echo "html_content<<EOF" >> $GITHUB_OUTPUT
           echo "$HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-  # 任务 2: 尝试使用 465 端口发送邮件 (首选方案)
-  send_via_port_465:
-    runs-on: ubuntu-latest
-    name: "第二步: 尝试端口 465 (SSL) 发送"
-    needs: fetch_dify_content
-
-    steps:
-      - name: Send email via Port 465
+      # 步骤 2: 使用上一步获取的内容发送邮件
+      - name: "Step 2: Send Email via Port 587"
         uses: dawidd6/action-send-mail@v3
         with:
+          # 使用我们验证过的可靠配置
           server_address: smtp.qq.com
-          server_port: 465
-          # secure: true 对于 465 端口是默认行为，可以省略，但写上更清晰
-          secure: true
+          server_port: 587
+          
+          # 您的邮箱凭证 (从Secrets读取)
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
+
+          # 邮件信息
           subject: '每日简报 - 由 Dify 生成'
           to: ${{ secrets.MAIL_TO }}
-          # (优化) 添加发件人名称，使邮件看起来更正式
           from: Dify 每日简报 <${{ secrets.MAIL_USERNAME }}>
-          html_body: ${{ needs.fetch_dify_content.outputs.html_body }}
-
-  # 任务 3: 如果 465 端口失败，则使用 587 端口作为备用方案
-  send_via_port_587:
-    runs-on: ubuntu-latest
-    name: "备用方案: 如果 465 失败, 则尝试端口 587 (STARTTLS)"
-    needs: [fetch_dify_content, send_via_port_465]
-    # if: failure() 表示只有当之前的任务（特别是send_via_port_465）失败时才运行
-    if: failure()
-
-    steps:
-      - name: Send email via Port 587
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.qq.com
-          # (关键修正) 使用我们验证过的 587 端口作为备用
-          server_port: 587
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: '[备用端口 587] 每日简报 - 由 Dify 生成'
-          to: ${{ secrets.MAIL_TO }}
-          from: Dify 每日简报 <${{ secrets.MAIL_USERNAME }}>
-          html_body: ${{ needs.fetch_dify_content.outputs.html_body }}
+          
+          # 关键步骤：引用上一步(id: fetch_dify)的输出(html_content)作为邮件正文
+          html_body: ${{ steps.fetch_dify.outputs.html_content }}
