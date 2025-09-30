@@ -1,5 +1,3 @@
-# .github/workflows/send-daily-email.yml
-
 name: Send Daily Email from Dify
 
 on:
@@ -11,17 +9,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 任务 1: 从 Dify 获取邮件内容和标题
+  # 任务 1: 从 Dify 获取邮件内容
   fetch_dify_content:
     runs-on: ubuntu-latest
     name: "第一步: 从 Dify 获取内容"
-    # 定义此任务的输出，以便其他任务可以使用
+    # 定义此任务的输出，我们只需要HTML正文
     outputs:
-      subject: ${{ steps.fetch_dify.outputs.subject_line }}
       html_body: ${{ steps.fetch_dify.outputs.html_content }}
 
     steps:
-      - name: Fetch Content and Title from Dify
+      - name: Fetch Content from Dify
         id: fetch_dify # 为这个步骤设置一个 ID
         run: |
           # 1. 调用您的 Dify 工作流 URL
@@ -33,45 +30,39 @@ jobs:
                   "response_mode": "blocking",
                   "user": "github-action-runner"
                 }' \
-            "https://dify.comlan.com/workflow/run")
+            "https://dify.comlan.com/v1/workflows/run")
 
           # 2. (调试用) 打印 Dify 返回的原始数据
           echo "--- Raw Response from Dify ---"
           echo "$API_RESPONSE"
           echo "------------------------------"
 
-          # 3. (新增) 在解析前，先验证 Dify 的响应是否为有效的 JSON
+          # 3. 在解析前，先验证 Dify 的响应是否为有效的 JSON
           if ! echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
             echo "::error::Failed to parse JSON response from Dify. The API might be down or the API Key is invalid."
             exit 1
           fi
 
-          # 4. (关键步骤) 从 JSON 中解析出标题和 HTML 正文
-          #    您可能需要根据上面打印的日志，修改 .data.outputs.title 和 .data.outputs.html 这两个路径
-          SUBJECT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.title // "AI 每日资讯"')
-          HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html')
+          # 4. (关键修正) 从 JSON 中解析出 HTML 正文
+          #    根据您的日志，变量名是 'html_content'
+          HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html_content')
 
           # 5. 检查内容是否为空
           if [ -z "$HTML" ]; then
-            echo "::error::Dify API did not return valid HTML content."
+            echo "::error::Dify API did not return valid HTML content from the 'html_content' field."
             exit 1
           fi
 
           # 6. 将解析出的内容设置为任务的输出变量
           #    使用特殊语法来处理可能的多行 HTML 内容
-          echo "subject_line<<EOF" >> $GITHUB_OUTPUT
-          echo "$SUBJECT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
           echo "html_content<<EOF" >> $GITHUB_OUTPUT
           echo "$HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-  # 任务 2: 尝试使用 465 端口发送邮件
+  # 任务 2: 尝试使用 465 端口发送邮件 (首选方案)
   send_via_port_465:
     runs-on: ubuntu-latest
     name: "第二步: 尝试端口 465 (SSL) 发送"
-    # needs 表示此任务必须等待 fetch_dify_content 成功后才能开始
     needs: fetch_dify_content
 
     steps:
@@ -80,33 +71,34 @@ jobs:
         with:
           server_address: smtp.qq.com
           server_port: 465
+          # secure: true 对于 465 端口是默认行为，可以省略，但写上更清晰
           secure: true
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          # 使用来自上一个任务的输出作为标题和正文
-          subject: ${{ needs.fetch_dify_content.outputs.subject }}
+          subject: '每日简报 - 由 Dify 生成'
           to: ${{ secrets.MAIL_TO }}
-          from: ${{ secrets.MAIL_USERNAME }}
+          # (优化) 添加发件人名称，使邮件看起来更正式
+          from: Dify 每日简报 <${{ secrets.MAIL_USERNAME }}>
           html_body: ${{ needs.fetch_dify_content.outputs.html_body }}
 
-  # 任务 3: 如果 465 端口失败，则使用 25 端口作为备用方案
-  send_via_port_25:
+  # 任务 3: 如果 465 端口失败，则使用 587 端口作为备用方案
+  send_via_port_587:
     runs-on: ubuntu-latest
-    name: "第三步: 如果 465 失败, 则尝试端口 25"
+    name: "备用方案: 如果 465 失败, 则尝试端口 587 (STARTTLS)"
     needs: [fetch_dify_content, send_via_port_465]
+    # if: failure() 表示只有当之前的任务（特别是send_via_port_465）失败时才运行
     if: failure()
 
     steps:
-      - name: Send email via Port 25
+      - name: Send email via Port 587
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.qq.com
-          server_port: 25
+          # (关键修正) 使用我们验证过的 587 端口作为备用
+          server_port: 587
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          # 使用来自第一个任务的输出，并在标题中注明是备用端口
-          subject: '[备用端口 25] ${{ needs.fetch_dify_content.outputs.subject }}'
+          subject: '[备用端口 587] 每日简报 - 由 Dify 生成'
           to: ${{ secrets.MAIL_TO }}
-          from: ${{ secrets.MAIL_USERNAME }}
+          from: Dify 每日简报 <${{ secrets.MAIL_USERNAME }}>
           html_body: ${{ needs.fetch_dify_content.outputs.html_body }}
-
