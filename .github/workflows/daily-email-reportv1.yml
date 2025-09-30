@@ -1,46 +1,69 @@
 # .github/workflows/send-daily-email.yml
 
-name: Test Email Sending with QQ Mail
+name: Test Email Sending with QQ Mail (Multi-Port)
 
 on:
   # 允许在 Actions 页面手动触发此工作流，方便测试
   workflow_dispatch:
 
 jobs:
-  test_send_email:
+  test_port_465:
     runs-on: ubuntu-latest
-    name: Send a Test Email using QQ Mail SMTP
+    name: "第一步: 尝试使用端口 465 (SSL) 发送"
 
     steps:
-      # 步骤 1: 发送测试邮件
-      - name: Send test email action
+      - name: Send test email via Port 465
         uses: dawidd6/action-send-mail@v3
         with:
-          # --- QQ 邮箱服务器配置 ---
-          # 注意：这里已修改为 QQ 邮箱的 SMTP 服务器地址
+          # --- QQ 邮箱服务器配置 (端口 465) ---
           server_address: smtp.qq.com
-          # QQ 邮箱要求使用 SSL 加密的 465 端口
           server_port: 465
-          # 必须启用 SSL
           secure: true
 
           # --- 您的 QQ 邮箱凭据 (从 GitHub Secrets 读取) ---
-          # 您的 QQ 邮箱地址 (例如: 12345@qq.com)
+          # 您的 QQ 邮箱地址
           username: ${{ secrets.MAIL_USERNAME }}
-          # 重要：这里不是您的 QQ 登录密码，而是需要在 QQ 邮箱设置中生成的 "授权码"
+          # 您的 QQ 邮箱授权码
           password: ${{ secrets.MAIL_PASSWORD }}
 
           # --- 邮件信息 ---
-          subject: 'GitHub Actions 邮件发送测试'
-          # 收件人邮箱，从 Secrets 中读取
+          subject: '✅ [端口 465] GitHub Actions 邮件发送成功'
           to: ${{ secrets.MAIL_TO }}
-          # 发件人邮箱，这里也应该是您的 QQ 邮箱地址
-          from: ${{ secrets.MAIL_FROM }}
-          
-          # 使用一个简单的 HTML 内容进行测试
+          # 根据您的要求，发件人地址也使用 MAIL_USERNAME
+          from: ${{ secrets.MAIL_USERNAME }}
           html_body: |
-            <h1>✅ 测试邮件</h1>
-            <p>你好,</p>
-            <p>这封邮件由 GitHub Actions 自动发出。</p>
-            <p>如果你收到了这封邮件，说明你的 SMTP 配置和 GitHub Secrets 设置都是正确的！</p>
-            <p>接下来你就可以把 Dify 的逻辑整合回来了。</p>
+            <h1>✅ 测试成功 (端口 465)</h1>
+            <p>这封邮件通过 <strong>465 端口</strong> (SSL 加密) 成功发出。</p>
+            <p>这证明您的 SMTP 配置和 GitHub Secrets 都是正确的！</p>
+
+  test_port_25:
+    runs-on: ubuntu-latest
+    name: "第二步: 如果 465 失败, 则尝试端口 25"
+    # needs 表示此任务必须等待 test_port_465 结束后才能开始
+    needs: test_port_465
+    # if: failure() 表示仅当它等待的 test_port_465 任务失败时，此任务才会运行
+    if: failure()
+
+    steps:
+      - name: Send test email via Port 25
+        uses: dawidd6/action-send-mail@v3
+        with:
+          # --- QQ 邮箱服务器配置 (端口 25) ---
+          server_address: smtp.qq.com
+          server_port: 25
+          # 端口 25 通常不直接使用 SSL，所以 secure 设置为 false
+          secure: false
+
+          # --- 您的 QQ 邮箱凭据 ---
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+
+          # --- 邮件信息 ---
+          subject: '✅ [端口 25] GitHub Actions 邮件发送成功'
+          to: ${{ secrets.MAIL_TO }}
+          from: ${{ secrets.MAIL_USERNAME }}
+          html_body: |
+            <h1>✅ 测试成功 (端口 25)</h1>
+            <p>这封邮件是在 465 端口失败后，通过 <strong>25 端口</strong> 成功发出的。</p>
+            <p>这证明您的 SMTP 配置和 GitHub Secrets 都是正确的！</p>
+
