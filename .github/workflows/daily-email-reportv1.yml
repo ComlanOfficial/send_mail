@@ -40,18 +40,24 @@ jobs:
           echo "$API_RESPONSE"
           echo "------------------------------"
 
-          # 3. (关键步骤) 从 JSON 中解析出标题和 HTML 正文
+          # 3. (新增) 在解析前，先验证 Dify 的响应是否为有效的 JSON
+          if ! echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
+            echo "::error::Failed to parse JSON response from Dify. The API might be down or the API Key is invalid."
+            exit 1
+          fi
+
+          # 4. (关键步骤) 从 JSON 中解析出标题和 HTML 正文
           #    您可能需要根据上面打印的日志，修改 .data.outputs.title 和 .data.outputs.html 这两个路径
           SUBJECT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.title // "AI 每日资讯"')
           HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html')
 
-          # 4. 检查内容是否为空
+          # 5. 检查内容是否为空
           if [ -z "$HTML" ]; then
             echo "::error::Dify API did not return valid HTML content."
             exit 1
           fi
 
-          # 5. 将解析出的内容设置为任务的输出变量
+          # 6. 将解析出的内容设置为任务的输出变量
           #    使用特殊语法来处理可能的多行 HTML 内容
           echo "subject_line<<EOF" >> $GITHUB_OUTPUT
           echo "$SUBJECT" >> $GITHUB_OUTPUT
