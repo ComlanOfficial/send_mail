@@ -1,20 +1,22 @@
-name: Send Daily Email from Dify (Single Job)
+# .github/workflows/send-daily-email.yml
+
+name: Send Daily Email from Dify
 
 on:
   schedule:
-    # 每天的 UTC 时间 8 点运行 (对应北京时间下午 4 点)
+    # 每天的 UTC 时间上午 8 点运行 (对应北京时间下午 4 点)
     - cron: '0 8 * * *'
   
-  # 允许在 Actions 页面手动触发此工作流，方便测试
+  # 允许您手动在 Actions 页面点击按钮来测试运行
   workflow_dispatch:
 
 jobs:
-  fetch_and_send_email:
+  send_email_job:
     runs-on: ubuntu-latest
     name: Fetch Dify Content and Send Email
 
     steps:
-      # 步骤 1: 从 Dify 获取邮件的 HTML 内容
+      # 步骤 1: (新增) 从 Dify 获取邮件的 HTML 内容
       - name: "Step 1: Fetch Content from Dify"
         # 为这个步骤设置一个ID，以便下一步可以引用它的输出
         id: fetch_dify
@@ -29,11 +31,6 @@ jobs:
                   "user": "github-action-runner"
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
-
-          # 打印原始返回，方便调试
-          echo "--- Raw Response from Dify ---"
-          echo "$API_RESPONSE"
-          echo "------------------------------"
 
           # 验证返回的是否为有效的JSON
           if ! echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
@@ -55,22 +52,31 @@ jobs:
           echo "$HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 步骤 2: 使用上一步获取的内容发送邮件
-      - name: "Step 2: Send Email via Port 587"
+      # 步骤 2: (修正) 使用上一步获取的内容发送邮件
+      - name: "Step 2: Send Email with Dify Content"
         uses: dawidd6/action-send-mail@v3
         with:
-          # 使用我们验证过的可靠配置
+          # 必需: 修正为我们测试通过的邮件服务器地址
           server_address: smtp.qq.com
-          server_port: 587
           
-          # 您的邮箱凭证 (从Secrets读取)
+          # 必需: 修正为我们测试通过的邮件服务器端口
+          server_port: 587
+
+          # 必需: 用来发邮件的邮箱账号 (从Secrets读取)
           username: ${{ secrets.MAIL_USERNAME }}
+
+          # 必需: 邮箱授权码 (从Secrets读取)
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # 邮件信息
+          # 必需: 邮件主题
           subject: '每日简报 - 由 Dify 生成'
+
+          # 必需: 收件人邮箱 (建议使用Secret管理)
           to: ${{ secrets.MAIL_TO }}
+
+          # 推荐: 添加发件人名称，使邮件更规范
           from: Dify 每日简报 <${{ secrets.MAIL_USERNAME }}>
           
-          # 关键步骤：引用上一步(id: fetch_dify)的输出(html_content)作为邮件正文
+          # 关键修正: 使用上一步的输出作为HTML正文
+          # 注意这里用的是 html_body 而不是 body
           html_body: ${{ steps.fetch_dify.outputs.html_content }}
