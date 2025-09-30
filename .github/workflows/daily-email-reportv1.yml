@@ -1,70 +1,46 @@
 # .github/workflows/send-daily-email.yml
 
-name: Send Daily Email from DifyV11111
+name: Test Email Sending with QQ Mail
 
 on:
-  schedule:
-    # 每天的 UTC 时间上午 8 点运行 (对应北京时间下午 4 点)
-    - cron: '0 8 * * *'
-  
   # 允许在 Actions 页面手动触发此工作流，方便测试
   workflow_dispatch:
 
 jobs:
-  send_email_job:
+  test_send_email:
     runs-on: ubuntu-latest
-    name: Fetch from Dify and Send Email
+    name: Send a Test Email using QQ Mail SMTP
 
     steps:
-      # 步骤 1: 调用 Dify API，并将返回的内容作为输出
-      - name: Fetch Content from Dify
-        id: fetch_dify_content # 为这个步骤设置一个 ID，方便后面引用
-        run: |
-          # 1. 请务必将下面的 YOUR_DIFY_WORKFLOW_URL 替换为你的 Dify 工作流 URL
-          API_RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-                  "inputs": {},
-                  "response_mode": "blocking",
-                  "user": "github-action-runner"
-                }' \
-          "https://dify.comlan.com/v1/workflows/run")
-
-          # 2. (调试代码) 下面这两行会把 Dify 返回的原始数据完整地打印到日志中
-          echo "--- Raw Response from Dify Start ---"
-          echo "$API_RESPONSE"
-          echo "--- Raw Response from Dify End ---"
-
-          # 检查 API 响应是否为空，如果为空则报错并中止
-          if [ -z "$API_RESPONSE" ]; then
-            echo "::error::Dify API returned an empty response."
-            exit 1
-          fi
-          
-          # 3. (关键步骤) 解析 JSON 并提取正文内容
-          #    你很可能需要根据上面打印出的日志，修改 .data.outputs.text 这个路径
-          CONTENT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.text')
-          
-          # 将提取出的内容设置为步骤的输出变量
-          echo "dify_body<<EOF" >> $GITHUB_OUTPUT
-          echo "$CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      # 步骤 2: 发送邮件，使用上一步获取到的内容作为正文
-      - name: Send email action
+      # 步骤 1: 发送测试邮件
+      - name: Send test email action
         uses: dawidd6/action-send-mail@v3
         with:
-          # --- 您的邮件服务器配置 (保持不变) ---
-          server_address: mail.comlan.com
-          server_port: 25
+          # --- QQ 邮箱服务器配置 ---
+          # 注意：这里已修改为 QQ 邮箱的 SMTP 服务器地址
+          server_address: smtp.qq.com
+          # QQ 邮箱要求使用 SSL 加密的 465 端口
+          server_port: 465
+          # 必须启用 SSL
+          secure: true
+
+          # --- 您的 QQ 邮箱凭据 (从 GitHub Secrets 读取) ---
+          # 您的 QQ 邮箱地址 (例如: 12345@qq.com)
           username: ${{ secrets.MAIL_USERNAME }}
+          # 重要：这里不是您的 QQ 登录密码，而是需要在 QQ 邮箱设置中生成的 "授权码"
           password: ${{ secrets.MAIL_PASSWORD }}
 
-          # --- 您的邮件信息 ---
-          subject: '每日报告 - 来自Dify'
-          to: bo.wang@comlan.com,wang.tianyang@comlan.com
-          from: ai.public@comlan.com
+          # --- 邮件信息 ---
+          subject: 'GitHub Actions 邮件发送测试'
+          # 收件人邮箱，从 Secrets 中读取
+          to: ${{ secrets.MAIL_TO }}
+          # 发件人邮箱，这里也应该是您的 QQ 邮箱地址
+          from: ${{ secrets.MAIL_FROM }}
           
-          # 使用上一步的输出作为邮件正文
-          html_body: ${{ steps.fetch_dify_content.outputs.dify_body }}
+          # 使用一个简单的 HTML 内容进行测试
+          html_body: |
+            <h1>✅ 测试邮件</h1>
+            <p>你好,</p>
+            <p>这封邮件由 GitHub Actions 自动发出。</p>
+            <p>如果你收到了这封邮件，说明你的 SMTP 配置和 GitHub Secrets 设置都是正确的！</p>
+            <p>接下来你就可以把 Dify 的逻辑整合回来了。</p>
