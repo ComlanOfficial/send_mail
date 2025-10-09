@@ -16,9 +16,8 @@ jobs:
     name: Fetch Dify Content and Send Email
 
     steps:
-      # 步骤 1: (新增) 从 Dify 获取邮件的 HTML 内容
+      # 步骤 1: 从 Dify 获取邮件的 HTML 内容 (已加入-k参数，保持不变)
       - name: "Step 1: Fetch Content from Dify"
-        # 为这个步骤设置一个ID，以便下一步可以引用它的输出
         id: fetch_dify
         run: |
           # 调用 Dify 工作流 API
@@ -52,31 +51,70 @@ jobs:
           echo "$HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 步骤 2: (修正) 使用上一步获取的内容发送邮件
-      - name: "Step 2: Send Email with Dify Content"
-        uses: dawidd6/action-send-mail@v3
+      # --------------------------------------------------------------------
+      # ↓↓↓↓↓↓ 以下是修改的核心部分 ↓↓↓↓↓↓
+      # --------------------------------------------------------------------
+
+      # 步骤 2: (新增) 安装并设置 Python 环境
+      - name: "Step 2: Setup Python"
+        uses: actions/setup-python@v4
         with:
-          # 必需: 修正为我们测试通过的邮件服务器地址
-          # server_address: 1.202.161.134
-          server_address: mail.comlan.com
-          # 必需: 修正为我们测试通过的邮件服务器端口
-          server_port: 587
+          python-version: '3.10'
 
-          # 必需: 用来发邮件的邮箱账号 (从Secrets读取)
-          username: ${{ secrets.MAIL_USERNAME }}
+      # 步骤 3: (替换) 使用 Python 脚本发送邮件（忽略证书验证）
+      # 这个步骤替换了原来报错的 dawidd6/action-send-mail
+      - name: "Step 3: Send Email with Python"
+        env:
+          # 从 Secrets 和上一步的输出中获取所有需要的信息
+          MAIL_SERVER: 'mail.comlan.com'
+          MAIL_PORT: 587
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_SUBJECT: '每日简报 - 由 Dify 生成'
+          MAIL_BODY_HTML: ${{ steps.fetch_dify.outputs.html_content }}
+        run: |
+          import smtplib
+          import ssl
+          from email.mime.text import MIMEText
+          from email.header import Header
+          import os
 
-          # 必需: 邮箱授权码 (从Secrets读取)
-          password: ${{ secrets.MAIL_PASSWORD }}
+          # 从环境变量中获取邮件信息
+          sender = os.environ['MAIL_USERNAME']
+          receivers = [os.environ['MAIL_TO']]
+          password = os.environ['MAIL_PASSWORD']
+          smtp_server = os.environ['MAIL_SERVER']
+          smtp_port = int(os.environ['MAIL_PORT'])
+          subject = os.environ['MAIL_SUBJECT']
+          html_content = os.environ['MAIL_BODY_HTML']
 
-          # 必需: 邮件主题
-          subject: '每日简报 - 由 Dify 生成'
-
-          # 必需: 收件人邮箱 (建议使用Secret管理)
-          to: ${{ secrets.MAIL_TO }}
-
-          # 推荐: 添加发件人名称，使邮件更规范
-          from: Dify 每日简报 <${{ secrets.MAIL_USERNAME }}>
+          # 创建邮件对象
+          msg = MIMEText(html_content, 'html', 'utf-8')
+          msg['From'] = Header(f"Dify 每日简报 <{sender}>", 'utf-8')
+          msg['To'] =  Header(','.join(receivers), 'utf-8')
+          msg['Subject'] = Header(subject, 'utf-8')
           
-          # 关键修正: 使用上一步的输出作为HTML正文
-          # 注意这里用的是 html_body 而不是 body
-          html_body: ${{ steps.fetch_dify.outputs.html_content }}
+          try:
+              print(f"Connecting to mail server {smtp_server}:{smtp_port}...")
+              # 关键：创建一个不验证证书的 SSL 上下文
+              context = ssl.create_unverified_context()
+
+              # 连接到 SMTP 服务器 (设置15秒超时)
+              server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
+              
+              # 使用 STARTTLS 开启加密传输，并传入我们自定义的上下文
+              server.starttls(context=context)
+              
+              print("Logging in...")
+              server.login(sender, password)
+              
+              print("Sending email...")
+              server.sendmail(sender, receivers, msg.as_string())
+              server.quit()
+              print("Email sent successfully!")
+
+          except Exception as e:
+              print("::error::Failed to send email.")
+              print(e)
+              exit(1)
