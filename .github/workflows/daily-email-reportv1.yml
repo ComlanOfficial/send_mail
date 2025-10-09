@@ -16,7 +16,7 @@ jobs:
     name: Fetch Dify Content and Send Email
 
     steps:
-      # 步骤 1: 从 Dify 获取邮件的 HTML 内容 (已加入-k参数，保持不变)
+      # 步骤 1: 从 Dify 获取邮件的 HTML 内容 (保持不变)
       - name: "Step 1: Fetch Content from Dify"
         id: fetch_dify
         run: |
@@ -51,21 +51,17 @@ jobs:
           echo "$HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # --------------------------------------------------------------------
-      # ↓↓↓↓↓↓ 以下是修改的核心部分 ↓↓↓↓↓↓
-      # --------------------------------------------------------------------
-
-      # 步骤 2: (新增) 安装并设置 Python 环境
+      # 步骤 2: 安装并设置 Python 环境 (保持不变)
       - name: "Step 2: Setup Python"
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      # 步骤 3: (替换) 使用 Python 脚本发送邮件（忽略证书验证）
-      # 这个步骤替换了原来报错的 dawidd6/action-send-mail
+      # 步骤 3: (已修正) 使用 Python 脚本发送邮件
       - name: "Step 3: Send Email with Python"
+        # 关键修正：在这里明确指定使用 python 作为 shell 来执行下面的脚本
+        shell: python
         env:
-          # 从 Secrets 和上一步的输出中获取所有需要的信息
           MAIL_SERVER: 'mail.comlan.com'
           MAIL_PORT: 587
           MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
