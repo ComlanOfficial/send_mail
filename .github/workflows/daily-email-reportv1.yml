@@ -61,7 +61,6 @@ jobs:
           
           # 必需: 修正为我们测试通过的邮件服务器端口
           server_port: 587
-          secure: true
 
           # 必需: 用来发邮件的邮箱账号 (从Secrets读取)
           username: ${{ secrets.MAIL_USERNAME }}
