@@ -1,4 +1,4 @@
-# .github/workflows/send-daily-email.yml
+# .github/workflows/daily-email-reportv1.yml
 
 name: Send Daily Email from Dify
 
@@ -6,7 +6,7 @@ on:
   schedule:
     # 每 15 分钟运行一次
     - cron: '*/15 * * * *'
-   
+  
   # 允许您手动在 Actions 页面点击按钮来测试运行
   workflow_dispatch:
 
@@ -67,7 +67,8 @@ jobs:
           import os
 
           sender = os.environ['MAIL_USERNAME']
-          receivers = [os.environ['MAIL_TO']]
+          # 关键修正：将逗号分隔的字符串分割成一个真正的邮箱地址列表
+          receivers = [email.strip() for email in os.environ['MAIL_TO'].split(',')]
           password = os.environ['MAIL_PASSWORD']
           smtp_server = os.environ['MAIL_SERVER']
           smtp_port = int(os.environ['MAIL_PORT'])
@@ -76,13 +77,13 @@ jobs:
 
           msg = MIMEText(html_content, 'html', 'utf-8')
           msg['From'] = Header(f"Dify 每日简报 <{sender}>", 'utf-8')
+          # 'To' 邮件头也显示所有收件人
           msg['To'] =  Header(','.join(receivers), 'utf-8')
           msg['Subject'] = Header(subject, 'utf-8')
           
           try:
               print(f"Connecting to mail server {smtp_server}:{smtp_port}...")
               
-              # 关键修正：使用官方推荐的方法创建不验证证书的 SSL 上下文
               context = ssl.create_default_context()
               context.check_hostname = False
               context.verify_mode = ssl.CERT_NONE
@@ -93,7 +94,7 @@ jobs:
               print("Logging in...")
               server.login(sender, password)
               
-              print("Sending email...")
+              print(f"Sending email to: {receivers}")
               server.sendmail(sender, receivers, msg.as_string())
               server.quit()
               print("Email sent successfully!")
