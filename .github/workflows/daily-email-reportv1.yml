@@ -5,7 +5,7 @@ name: Send Daily Email from Dify
 on:
   schedule:
     # 每天的 UTC 时间上午 8 点运行 (对应北京时间下午 4 点)
-    - cron: '0 8 * * *'
+   - cron: '*/5 * * * *'
   
   # 允许您手动在 Actions 页面点击按钮来测试运行
   workflow_dispatch:
