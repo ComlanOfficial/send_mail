@@ -16,11 +16,10 @@ jobs:
     name: Fetch Dify Content and Send Email
 
     steps:
-      # 步骤 1: 从 Dify 获取邮件的 HTML 内容 (保持不变)
+      # 步骤 1: 从 Dify 获取邮件的 HTML 内容
       - name: "Step 1: Fetch Content from Dify"
         id: fetch_dify
         run: |
-          # 调用 Dify 工作流 API
           API_RESPONSE=$(curl -s -k -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -30,36 +29,27 @@ jobs:
                   "user": "github-action-runner"
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
-
-          # 验证返回的是否为有效的JSON
           if ! echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
             echo "::error::Failed to parse JSON response from Dify. Check API Key or Dify status."
             exit 1
           fi
-
-          # 解析出 html_content 字段
           HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html_content')
-
-          # 检查内容是否为空
           if [ -z "$HTML" ]; then
             echo "::error::Dify API did not return content from the 'html_content' field."
             exit 1
           fi
-
-          # 将HTML内容设置为此步骤的输出变量，供下一步使用
           echo "html_content<<EOF" >> $GITHUB_OUTPUT
           echo "$HTML" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 步骤 2: 安装并设置 Python 环境 (保持不变)
+      # 步骤 2: 安装并设置 Python 环境
       - name: "Step 2: Setup Python"
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      # 步骤 3: (已修正) 使用 Python 脚本发送邮件
+      # 步骤 3: 使用 Python 脚本发送邮件
       - name: "Step 3: Send Email with Python"
-        # 关键修正：在这里明确指定使用 python 作为 shell 来执行下面的脚本
         shell: python
         env:
           MAIL_SERVER: 'mail.comlan.com'
@@ -76,7 +66,6 @@ jobs:
           from email.header import Header
           import os
 
-          # 从环境变量中获取邮件信息
           sender = os.environ['MAIL_USERNAME']
           receivers = [os.environ['MAIL_TO']]
           password = os.environ['MAIL_PASSWORD']
@@ -85,7 +74,6 @@ jobs:
           subject = os.environ['MAIL_SUBJECT']
           html_content = os.environ['MAIL_BODY_HTML']
 
-          # 创建邮件对象
           msg = MIMEText(html_content, 'html', 'utf-8')
           msg['From'] = Header(f"Dify 每日简报 <{sender}>", 'utf-8')
           msg['To'] =  Header(','.join(receivers), 'utf-8')
@@ -93,13 +81,13 @@ jobs:
           
           try:
               print(f"Connecting to mail server {smtp_server}:{smtp_port}...")
-              # 关键：创建一个不验证证书的 SSL 上下文
-              context = ssl.create_unverified_context()
-
-              # 连接到 SMTP 服务器 (设置15秒超时)
-              server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
               
-              # 使用 STARTTLS 开启加密传输，并传入我们自定义的上下文
+              # 关键修正：使用官方推荐的方法创建不验证证书的 SSL 上下文
+              context = ssl.create_default_context()
+              context.check_hostname = False
+              context.verify_mode = ssl.CERT_NONE
+
+              server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
               server.starttls(context=context)
               
               print("Logging in...")
