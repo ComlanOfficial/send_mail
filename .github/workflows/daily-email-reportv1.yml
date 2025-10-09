@@ -22,7 +22,7 @@ jobs:
         id: fetch_dify
         run: |
           # 调用 Dify 工作流 API
-          API_RESPONSE=$(curl -s -X POST \
+          API_RESPONSE=$(curl -s -k -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d '{
