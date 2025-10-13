@@ -52,8 +52,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      # 步骤 3: 使用 Python 脚本发送邮件
+# 步骤 3: 使用 Python 脚本发送邮件
       - name: "Step 3: Send Email with Python"
+        # --- 核心修正：指定 shell 为 python ---
+        shell: python
         env:
           MAIL_SERVER: 'mail.comlan.com'
           MAIL_PORT: 587
@@ -75,16 +77,13 @@ jobs:
           smtp_port = int(os.environ['MAIL_PORT'])
           subject = os.environ['MAIL_SUBJECT']
           
-          # --- 核心修正：从文件中读取 HTML 内容 ---
           try:
               with open('email_body.html', 'r', encoding='utf-8') as f:
                   html_content = f.read()
           except FileNotFoundError:
               print("::error::email_body.html not found!")
               exit(1)
-          # ----------------------------------------
 
-          # 检查读取的内容是否为空
           if not html_content:
               print("::error::HTML content read from file is empty!")
               exit(1)
