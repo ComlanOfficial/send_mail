@@ -1,4 +1,4 @@
-name: Send Daily Email from Dify
+name: Send Email 
 
 on:
   schedule:
