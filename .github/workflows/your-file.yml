@@ -1,6 +1,26 @@
-- name: "Step 1: Fetch Content from Dify and Save to File"
+# .github/workflows/daily-email-reportv1.yml
+
+name: Send Email
+
+on:
+  schedule:
+    # 每日 UTC 时间 8 点运行 (对应北京/台北时间下午4点)
+    - cron: '0 8 * * *'
+  
+  # 允许您手动在 Actions 页面点击按钮来测试运行
+  workflow_dispatch:
+
+jobs:
+  send_email_job:
+    runs-on: ubuntu-latest
+    name: Fetch Dify Content and Send Email
+
+    steps:
+      # 步骤 1: 从 Dify 获取邮件内容 (更智能的版本)
+      - name: "Step 1: Intelligently Fetch Content from Dify"
         id: fetch_dify
         run: |
+          # 发送请求并存储原始响应
           API_RESPONSE=$(curl -s -k -X POST \
             -H "Authorization: Bearer ${{ secrets.DIFY_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -10,29 +30,108 @@
                   "user": "github-action-runner"
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
-                    
-          # 检查 API 响应是否为有效的 JSON
-          if ! echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
-            echo "::error::Failed to parse JSON response from Dify. Raw response: $API_RESPONSE"
-            exit 1
-          fi
-                    
-          # --- 核心修正：使用强大的 JQ 过滤器来提取内容 ---
-          # 尝试从以下任一路径提取 html_content 的值：
-          # 1. 标准路径: .data.outputs.html_content
-          # 2. 递归下降: 查找 JSON 中任意深度的 "html_content" 键
-          # `.. | select(has("html_content")) | .html_content`
-          # 这样可以防止因 Dify 结构变化而找不到字段。
-          HTML_CONTENT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html_content // (.. | select(has("html_content")) | .html_content // empty) | select(. != null and . != "")' | head -n 1)
 
-          # 检查提取的内容是否为空
-          if [ -z "$HTML_CONTENT" ]; then
-            echo "::error::Dify API did not return content from the 'html_content' field or the content was empty/null."
-            echo "::error::Dify Raw Response:"
-            echo "$API_RESPONSE"
+          # 在日志中打印原始响应，方便调试
+          echo "--- Dify API Raw Response ---"
+          echo "$API_RESPONSE"
+          echo "-----------------------------"
+
+          FINAL_CONTENT=""
+
+          # 检查响应是否为有效的 JSON
+          if echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
+            echo "Response is valid JSON. Attempting smart extraction..."
+            
+            # 尝试1: 获取指定的 'html_content' 字段
+            EXTRACTED_HTML=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html_content')
+
+            # 尝试2: 如果 'html_content' 为空或 "null"，则智能提取 outputs 中的第一个字段的值
+            if [ "$EXTRACTED_HTML" = "null" ] || [ -z "$EXTRACTED_HTML" ]; then
+              echo "Field 'html_content' not found or is empty. Trying to extract the first available field from outputs."
+              # 这个 jq 命令会获取 outputs 对象里第一个条目的值
+              FINAL_CONTENT=$(echo "$API_RESPONSE" | jq -r 'try .data.outputs | to_entries[0].value')
+            else
+              FINAL_CONTENT="$EXTRACTED_HTML"
+            fi
+          else
+            echo "Response is NOT valid JSON. Using the raw response as content."
+            FINAL_CONTENT="$API_RESPONSE"
+          fi
+
+          # 最后检查，如果内容在所有尝试后仍然为空，则报错
+          if [ -z "$FINAL_CONTENT" ] || [ "$FINAL_CONTENT" = "null" ]; then
+            echo "::error::Failed to extract any meaningful content from Dify API response."
             exit 1
           fi
-                    
-          # 将 HTML 内容写入一个临时文件
-          echo "$HTML_CONTENT" > email_body.html
-          echo "HTML content successfully extracted and saved to email_body.html (Size: $(echo -n "$HTML_CONTENT" | wc -c) bytes)"
+
+          echo "Content successfully extracted. Setting output for next step."
+          # 使用 GitHub Actions 的方式来处理多行字符串输出
+          echo "html_content<<EOF" >> $GITHUB_OUTPUT
+          echo "$FINAL_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 步骤 2: 安装并设置 Python 环境 (无变化)
+      - name: "Step 2: Setup Python"
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      # 步骤 3: 使用 Python 脚本发送邮件 (无变化)
+      - name: "Step 3: Send Email with Python"
+        shell: python
+        env:
+          MAIL_SERVER: 'mail.comlan.com'
+          MAIL_PORT: 587
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_SUBJECT: '每日简报 - 由 Dify 生成'
+          MAIL_BODY_HTML: ${{ steps.fetch_dify.outputs.html_content }}
+        run: |
+          import smtplib
+          import ssl
+          from email.mime.text import MIMEText
+          from email.header import Header
+          import os
+
+          sender = os.environ['MAIL_USERNAME']
+          receivers = [email.strip() for email in os.environ['MAIL_TO'].split(',')]
+          password = os.environ['MAIL_PASSWORD']
+          smtp_server = os.environ['MAIL_SERVER']
+          smtp_port = int(os.environ['MAIL_PORT'])
+          subject = os.environ['MAIL_SUBJECT']
+          html_content = os.environ['MAIL_BODY_HTML']
+
+          # 简单的检查，判断内容是否像HTML，如果不是，则用纯文本格式发送
+          # 这样可以避免将纯文本错误信息渲染成空白邮件
+          if "<html" not in html_content.lower() and "<body" not in html_content.lower():
+              msg = MIMEText(html_content, 'plain', 'utf-8')
+          else:
+              msg = MIMEText(html_content, 'html', 'utf-8')
+          
+          msg['From'] = Header(f"Dify 每日简报 <{sender}>", 'utf-8')
+          msg['To'] =  Header(','.join(receivers), 'utf-8')
+          msg['Subject'] = Header(subject, 'utf-8')
+          
+          try:
+              print(f"Connecting to mail server {smtp_server}:{smtp_port}...")
+              
+              context = ssl.create_default_context()
+              context.check_hostname = False
+              context.verify_mode = ssl.CERT_NONE
+
+              server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
+              server.starttls(context=context)
+              
+              print("Logging in...")
+              server.login(sender, password)
+              
+              print(f"Sending email to: {receivers}")
+              server.sendmail(sender, receivers, msg.as_string())
+              server.quit()
+              print("Email sent successfully!")
+
+          except Exception as e:
+              print("::error::Failed to send email.")
+              print(e)
+              exit(1)
