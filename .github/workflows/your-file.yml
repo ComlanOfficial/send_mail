@@ -1,20 +1,4 @@
-name: Send Email 
-
-on:
-  schedule:
-    # 每天早上8点运行
-    - cron: '0 8 * * *'
-  
-  workflow_dispatch:
-
-jobs:
-  send_email_job:
-    runs-on: ubuntu-latest
-    name: Fetch Dify Content and Send Email
-
-    steps:
-      # 步骤 1: 从 Dify 获取邮件的 HTML 内容并保存到文件
-      - name: "Step 1: Fetch Content from Dify and Save to File"
+- name: "Step 1: Fetch Content from Dify and Save to File"
         id: fetch_dify
         run: |
           API_RESPONSE=$(curl -s -k -X POST \
@@ -26,90 +10,29 @@ jobs:
                   "user": "github-action-runner"
                 }' \
             "https://dify.comlan.com/v1/workflows/run")
-          
+                    
           # 检查 API 响应是否为有效的 JSON
           if ! echo "$API_RESPONSE" | jq . > /dev/null 2>&1; then
             echo "::error::Failed to parse JSON response from Dify. Raw response: $API_RESPONSE"
             exit 1
           fi
-          
-          # 从 JSON 中提取 html_content 字段
-          HTML_CONTENT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html_content')
-          
+                    
+          # --- 核心修正：使用强大的 JQ 过滤器来提取内容 ---
+          # 尝试从以下任一路径提取 html_content 的值：
+          # 1. 标准路径: .data.outputs.html_content
+          # 2. 递归下降: 查找 JSON 中任意深度的 "html_content" 键
+          # `.. | select(has("html_content")) | .html_content`
+          # 这样可以防止因 Dify 结构变化而找不到字段。
+          HTML_CONTENT=$(echo "$API_RESPONSE" | jq -r '.data.outputs.html_content // (.. | select(has("html_content")) | .html_content // empty) | select(. != null and . != "")' | head -n 1)
+
           # 检查提取的内容是否为空
-          if [ -z "$HTML_CONTENT" ] || [ "$HTML_CONTENT" == "null" ]; then
-            echo "::error::Dify API did not return content from the 'html_content' field."
+          if [ -z "$HTML_CONTENT" ]; then
+            echo "::error::Dify API did not return content from the 'html_content' field or the content was empty/null."
+            echo "::error::Dify Raw Response:"
+            echo "$API_RESPONSE"
             exit 1
           fi
-          
-          # --- 核心修正：将 HTML 内容写入一个临时文件 ---
+                    
+          # 将 HTML 内容写入一个临时文件
           echo "$HTML_CONTENT" > email_body.html
-          echo "HTML content saved to email_body.html"
-
-      # 步骤 2: 安装并设置 Python 环境
-      - name: "Step 2: Setup Python"
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-# 步骤 3: 使用 Python 脚本发送邮件
-      - name: "Step 3: Send Email with Python"
-        # --- 核心修正：指定 shell 为 python ---
-        shell: python
-        env:
-          MAIL_SERVER: 'mail.comlan.com'
-          MAIL_PORT: 587
-          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
-          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
-          MAIL_TO: ${{ secrets.MAIL_TO }}
-          MAIL_SUBJECT: '每日简报 - 由 Dify 生成'
-        run: |
-          import smtplib
-          import ssl
-          from email.mime.text import MIMEText
-          from email.header import Header
-          import os
-
-          sender = os.environ['MAIL_USERNAME']
-          receivers = [email.strip() for email in os.environ['MAIL_TO'].split(',')]
-          password = os.environ['MAIL_PASSWORD']
-          smtp_server = os.environ['MAIL_SERVER']
-          smtp_port = int(os.environ['MAIL_PORT'])
-          subject = os.environ['MAIL_SUBJECT']
-          
-          try:
-              with open('email_body.html', 'r', encoding='utf-8') as f:
-                  html_content = f.read()
-          except FileNotFoundError:
-              print("::error::email_body.html not found!")
-              exit(1)
-
-          if not html_content:
-              print("::error::HTML content read from file is empty!")
-              exit(1)
-
-          msg = MIMEText(html_content, 'html', 'utf-8')
-          msg['From'] = Header(f"Dify 每日简报 <{sender}>", 'utf-8')
-          msg['To'] =  Header(','.join(receivers), 'utf-8')
-          msg['Subject'] = Header(subject, 'utf-8')
-          
-          try:
-              print(f"Connecting to mail server {smtp_server}:{smtp_port}...")
-              
-              context = ssl.create_default_context()
-              
-              server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
-              server.starttls(context=context)
-              
-              print("Logging in...")
-              server.login(sender, password)
-              
-              print(f"Sending email to: {receivers}")
-              server.sendmail(sender, receivers, msg.as_string())
-              server.quit()
-              print("Email sent successfully!")
-
-          except Exception as e:
-              print("::error::Failed to send email.")
-              print(e)
-              exit(1)
+          echo "HTML content successfully extracted and saved to email_body.html (Size: $(echo -n "$HTML_CONTENT" | wc -c) bytes)"
